@@ -1,0 +1,38 @@
+name: Daily Recalculation
+
+on:
+  schedule:
+    # 02:00 UTC каждый день (как в спецификации)
+    - cron: '0 2 * * *'
+  # Ручной запуск из вкладки Actions
+  workflow_dispatch:
+
+jobs:
+  recalculate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Push database schema
+        run: bun run db:push
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Run recalculation
+        run: bun run recalculate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Google Gemini API (бесплатно, 500 запросов/день)
+          # Получить ключ: https://aistudio.google.com/apikey
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Опционально: сменить модель (по умолчанию gemini-2.5-flash-lite)
+          # GEMINI_MODEL: gemini-2.5-flash
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}

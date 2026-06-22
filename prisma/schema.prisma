@@ -1,0 +1,56 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // ВАЖНО: для Neon/Vercel используйте "postgresql".
+  // Для локальной разработки с файлом БД — "sqlite".
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Сырые собранные события по маркерам (аналог raw_events в спецификации)
+model RawEvent {
+  id          String   @id @default(cuid())
+  markerId    String
+  eventDate   DateTime
+  sourceUrl   String
+  sourceName  String
+  rawText     String
+  collectedAt DateTime @default(now())
+
+  @@index([markerId, eventDate])
+  @@index([sourceUrl])
+}
+
+/// Оценки ИИ по каждому маркеру за дату расчёта (аналог marker_scores)
+model MarkerScore {
+  id           String   @id @default(cuid())
+  calcDate     DateTime
+  markerId     String
+  probability  Int
+  trend        String // UP | DOWN | FLAT
+  confidence   String // HIGH | MEDIUM | LOW
+  rationaleEn  String
+  rationaleRu  String?
+  // Храним как JSON-строку (совместимо с SQLite и PostgreSQL)
+  keyFactsJson String
+  weight       Int
+  createdAt    DateTime @default(now())
+
+  @@unique([calcDate, markerId])
+  @@index([calcDate])
+}
+
+/// Итоговая агрегированная оценка за дату (аналог aggregates)
+model Aggregate {
+  calcDate         DateTime @id
+  totalProbability Int
+  summaryEn        String
+  summaryRu        String?
+  markerCount      Int
+  createdAt        DateTime @default(now())
+}

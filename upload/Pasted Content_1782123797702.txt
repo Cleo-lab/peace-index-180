@@ -1,0 +1,272 @@
+Run bun run recalculate
+  bun run recalculate
+  shell: /usr/bin/bash -e {0}
+  env:
+    DATABASE_URL: ***
+    ZAI_API_KEY: ***
+    ZAI_BASE_URL: 
+    ZAI_TOKEN: 
+$ bun run scripts/recalculate.ts
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Peace Index 180 — Daily Recalculation
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AI mode: public z.ai API + DuckDuckGo
+Database: ***ep-soft-hill-askqbp78.c-4.eu-central-1.aws.neon.tech/neondb?sslmode=require
+  [░░░░░░░░░░░░░░░░░░░░] 0% | collecting | Collecting open-source data (0/17)
+  [░░░░░░░░░░░░░░░░░░░░] 0% | collecting | M1 · IMF EFF Program (0/17)
+  [█░░░░░░░░░░░░░░░░░░░] 6% | collecting | M2 · War Risk Insurance & MIGA/DFC (1/17)
+  [██░░░░░░░░░░░░░░░░░░] 12% | collecting | M3 · EBRD Projects (2/17)
+  [███░░░░░░░░░░░░░░░░░] 18% | collecting | M4 · Kiel Ukraine Support Tracker (3/17)
+  [████░░░░░░░░░░░░░░░░] 24% | collecting | M5 · Ports & Grain Corridor (4/17)
+  [█████░░░░░░░░░░░░░░░] 29% | collecting | M6 · Verkhovna Rada FDI Laws (5/17)
+  [███████░░░░░░░░░░░░░] 35% | collecting | M7 · Prozorro.Sale Large Privatization (6/17)
+  [████████░░░░░░░░░░░░] 41% | collecting | M8 · EU Legislation (Eur-Lex) (7/17)
+  [█████████░░░░░░░░░░░] 47% | collecting | M9 · Frontline Dynamics (ISW) (8/17)
+  [██████████░░░░░░░░░░] 53% | collecting | M10 · Combat Intensity (ACLED) (9/17)
+  [███████████░░░░░░░░░] 59% | collecting | M11 · Rear Strikes (Ukraine) (10/17)
+  [█████████████░░░░░░░] 65% | collecting | M12 · Equipment Losses (Oryx) (11/17)
+  [██████████████░░░░░░] 71% | collecting | M13 · Russian Official Rhetoric (12/17)
+  [███████████████░░░░░] 76% | collecting | M14 · Russian Rear Strikes & Economy (13/17)
+  [████████████████░░░░] 82% | collecting | M15 · Russian Budget/Mobilization (14/17)
+  [█████████████████░░░] 88% | collecting | M16 · G7 / White House Statements (15/17)
+  [██████████████████░░] 94% | collecting | M17 · OSINT Telegram Channels (16/17)
+  [░░░░░░░░░░░░░░░░░░░░] 0% | analyzing | M1 · IMF EFF Program (0/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for IMF_EFF: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [█░░░░░░░░░░░░░░░░░░░] 6% | analyzing | M2 · War Risk Insurance & MIGA/DFC (1/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for WRI_INSURANCE: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [██░░░░░░░░░░░░░░░░░░] 12% | analyzing | M3 · EBRD Projects (2/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for EBRD_PROJECTS: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [███░░░░░░░░░░░░░░░░░] 18% | analyzing | M4 · Kiel Ukraine Support Tracker (3/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for KIEL_TRACKER: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [████░░░░░░░░░░░░░░░░] 24% | analyzing | M5 · Ports & Grain Corridor (4/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for PORTS_GRAIN: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [█████░░░░░░░░░░░░░░░] 29% | analyzing | M6 · Verkhovna Rada FDI Laws (5/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for RADA_FDI: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [███████░░░░░░░░░░░░░] 35% | analyzing | M7 · Prozorro.Sale Large Privatization (6/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for PROZORRO_PRIVAT: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [████████░░░░░░░░░░░░] 41% | analyzing | M8 · EU Legislation (Eur-Lex) (7/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for EURLEX_EU: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [█████████░░░░░░░░░░░] 47% | analyzing | M9 · Frontline Dynamics (ISW) (8/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for ISW_FRONTLINE: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [██████████░░░░░░░░░░] 53% | analyzing | M10 · Combat Intensity (ACLED) (9/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for ACLED_INTENSITY: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [███████████░░░░░░░░░] 59% | analyzing | M11 · Rear Strikes (Ukraine) (10/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for REAR_STRIKES_UA: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [█████████████░░░░░░░] 65% | analyzing | M12 · Equipment Losses (Oryx) (11/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for ORYX_LOSSES: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [██████████████░░░░░░] 71% | analyzing | M13 · Russian Official Rhetoric (12/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for RU_RHETORIC: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [███████████████░░░░░] 76% | analyzing | M14 · Russian Rear Strikes & Economy (13/17)
+prisma:query SELECT 1
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for RU_REAR_ECONOMY: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [████████████████░░░░] 82% | analyzing | M15 · Russian Budget/Mobilization (14/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for RU_BUDGET_MOBIL: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [█████████████████░░░] 88% | analyzing | M16 · G7 / White House Statements (15/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for G7_WH_STATEMENTS: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [██████████████████░░] 94% | analyzing | M17 · OSINT Telegram Channels (16/17)
+prisma:query SELECT "public"."RawEvent"."id", "public"."RawEvent"."markerId", "public"."RawEvent"."eventDate", "public"."RawEvent"."sourceUrl", "public"."RawEvent"."sourceName", "public"."RawEvent"."rawText", "public"."RawEvent"."collectedAt" FROM "public"."RawEvent" WHERE ("public"."RawEvent"."markerId" = $1 AND "public"."RawEvent"."eventDate" >= $2) ORDER BY "public"."RawEvent"."eventDate" DESC LIMIT $3 OFFSET $4
+[analyzer] LLM call failed for OSINT_TELEGRAM: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."MarkerScore" ("id","calcDate","markerId","probability","trend","confidence","rationaleEn","keyFactsJson","weight","createdAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT ("calcDate","markerId") DO UPDATE SET "probability" = $11, "trend" = $12, "confidence" = $13, "rationaleEn" = $14, "keyFactsJson" = $15, "weight" = $16, "rationaleRu" = $17 WHERE (("public"."MarkerScore"."calcDate" = $18 AND "public"."MarkerScore"."markerId" = $19) AND 1=1) RETURNING "public"."MarkerScore"."id", "public"."MarkerScore"."calcDate", "public"."MarkerScore"."markerId", "public"."MarkerScore"."probability", "public"."MarkerScore"."trend", "public"."MarkerScore"."confidence", "public"."MarkerScore"."rationaleEn", "public"."MarkerScore"."rationaleRu", "public"."MarkerScore"."keyFactsJson", "public"."MarkerScore"."weight", "public"."MarkerScore"."createdAt"
+  [████████████████████] 100% | aggregating | Aggregating final index (17/17)
+[analyzer] aggregate summary failed: 106 |     }),
+107 |   });
+108 | 
+109 |   if (!res.ok) {
+110 |     const text = await res.text().catch(() => "");
+111 |     throw new Error(`z.ai public API error ${res.status}: ${text.slice(0, 300)}`);
+                    ^
+error: z.ai public API error 400: {"error":{"code":"1211","message":"Unknown Model, please check the model code."}}
+      at llmCompletePublic (/home/runner/work/peace-index-180/peace-index-180/src/lib/ai.ts:111:15)
+prisma:query INSERT INTO "public"."Aggregate" ("calcDate","totalProbability","summaryEn","markerCount","createdAt") VALUES ($1,$2,$3,$4,$5) ON CONFLICT ("calcDate") DO UPDATE SET "totalProbability" = $6, "summaryEn" = $7, "markerCount" = $8, "summaryRu" = $9 WHERE ("public"."Aggregate"."calcDate" = $10 AND 1=1) RETURNING "public"."Aggregate"."calcDate", "public"."Aggregate"."totalProbability", "public"."Aggregate"."summaryEn", "public"."Aggregate"."summaryRu", "public"."Aggregate"."markerCount", "public"."Aggregate"."createdAt"
+  [████████████████████] 100% | done | Complete (17/17)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✓ Complete in 28s
+  Total probability: 0%
+  Summary: Weighted average across 17 markers yields 0% probability of peace within 180 days....
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+0s
+Post job cleanup.
+0s
+Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Post job cleanup.
+/usr/bin/git version
+git version 2.54.0
+Temporarily overriding HOME='/home/runner/work/_temp/39c6a73e-6f35-4078-a8eb-a7acbced7e14' before making global git config changes
+Adding repository directory to the temporary git global config as a safe directory
+/usr/bin/git config --global --add safe.directory /home/runner/work/peace-index-180/peace-index-180
+/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+http.https://github.com/.extraheader
+/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url

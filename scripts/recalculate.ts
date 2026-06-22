@@ -27,7 +27,7 @@ async function main() {
   const mode = getAIMode();
   const modeLabel =
     mode === "gemini"
-      ? `Google Gemini API (model: ${process.env.GEMINI_MODEL || "gemini-2.5-flash-lite"}) + DuckDuckGo`
+      ? `Google Gemini API (model: ${process.env.GEMINI_MODEL || "gemini-2.5-flash-lite"}) + Google News RSS`
       : mode === "sdk"
         ? "z-ai SDK (sandbox)"
         : "UNKNOWN — no API key set";

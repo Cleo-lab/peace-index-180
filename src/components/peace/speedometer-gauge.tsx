@@ -26,13 +26,14 @@ interface SpeedometerGaugeProps {
 // 50% → 0° (верх, 12 часов)
 // 100% → 135° (нижне-право, ~4-5 часов)
 const CX = 160;
-const CY = 140;
+const CY = 155;
 const R = 112;
 const STROKE = 22;
 const START_ANGLE = 225;
 const SWEEP = 270;
 const VIEW_W = 320;
-const VIEW_H = 280;
+// viewBox начинается с Y=-12, чтобы дать место для метки "50" сверху
+const VIEW_BOX = "0 -12 320 292";
 
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -122,7 +123,7 @@ export function SpeedometerGauge({
     <div className={cn("flex flex-col items-center", className)}>
       <div className="relative w-full max-w-[360px]">
         <svg
-          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+          viewBox={VIEW_BOX}
           className="w-full"
           role="img"
           aria-label={`Спидометр вероятности мира: ${v} процентов. Цветные сегменты показывают вклад групп маркеров.`}

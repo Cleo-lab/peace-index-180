@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { llmComplete, llmCompleteWithSearch, sleep } from "@/lib/ai";
+import { llmComplete, sleep } from "@/lib/ai";
+import { fetchGoogleNewsRSS, type NewsItem } from "@/lib/rss";
 import {
   MARKERS,
   MARKER_MAP,
@@ -8,7 +9,6 @@ import {
   type MarkerDef,
   type Trend,
 } from "@/lib/markers";
-import type { CollectedEvent } from "@/lib/collector";
 
 const HORIZON_DAYS = 180;
 const STALE_THRESHOLD_DAYS = 14;
@@ -69,22 +69,37 @@ function clamp(n: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, n));
 }
 
-/// Анализ одного маркера через LLM + Google Search (grounding).
-/// Gemini ищет актуальные данные и анализирует их одним вызовом.
-/// Источники URL приходят из grounding metadata — для антигаллюцинации.
-export async function analyzeMarker(
-  marker: MarkerDef,
-): Promise<MarkerAnalysis> {
-  const userInput = `Search Google for the latest news and data about this marker, then analyze.
+/// Формирует INPUT_DATA из новостей RSS для промпта маркера.
+function formatNewsData(news: NewsItem[]): string {
+  if (news.length === 0) {
+    return "INPUT_DATA (recent news): (no recent news found via Google News RSS)";
+  }
+  const lines = news.map((n) => {
+    const d = n.date.toISOString().slice(0, 10);
+    return `- ${d}: ${n.title} [${n.source}] Source: ${n.url}`;
+  });
+  return `INPUT_DATA (recent news from Google News RSS):\n${lines.join("\n")}`;
+}
 
-MARKER_ID: ${marker.id}
+/// Анализ одного маркера: сбор RSS-новостей + LLM-оценка.
+/// Использует ТОЛЬКО gemini-2.5-flash-lite.
+export async function analyzeMarker(marker: MarkerDef): Promise<MarkerAnalysis> {
+  // Шаг 1: сбор свежих новостей через Google News RSS
+  const news = await fetchGoogleNewsRSS(marker.searchQuery, 8);
+  console.log(
+    `[analyzer] ${marker.id}: collected ${news.length} news items`,
+  );
+
+  // Шаг 2: LLM-анализ на основе собранных новостей
+  const userInput = `MARKER_ID: ${marker.id}
 WEIGHT: ${marker.weight}
 MARKER_LOGIC: ${marker.logic}
-SOURCES_TO_CHECK: ${marker.sources.join(", ")}
 
-Search query hint: ${marker.searchQuery}
+${formatNewsData(news)}
 
-QUESTION: Based on the latest data you find via Google Search, estimate the probability of peace in Ukraine within the next ${HORIZON_DAYS} days, considering this marker's logic. Long-term structural signals (multi-year insurance, IMF reviews, reconstruction laws) indicate market expectation of durable peace and raise the probability; active combat and mobilization lower it. 
+QUESTION: Based on the news data above, estimate the probability of peace in Ukraine within the next ${HORIZON_DAYS} days, considering this marker's logic. Long-term structural signals (multi-year insurance, IMF reviews, reconstruction laws) indicate market expectation of durable peace and raise the probability; active combat and mobilization lower it.
+
+In "key_facts", you MUST include URLs from the INPUT_DATA above to verify claims. Do not invent URLs.
 
 Return JSON only with this schema:
 {
@@ -96,14 +111,10 @@ Return JSON only with this schema:
 }`;
 
   let raw = "";
-  let sources: { url: string; title: string }[] = [];
   try {
-    const result = await llmCompleteWithSearch(SYSTEM_INSTRUCTION, userInput);
-    raw = result.text;
-    sources = result.sources;
+    raw = await llmComplete(SYSTEM_INSTRUCTION, userInput);
   } catch (err) {
-    console.error(`[analyzer] LLM+search call failed for ${marker.id}:`, err);
-    // Fallback: нейтральная оценка при ошибке
+    console.error(`[analyzer] LLM call failed for ${marker.id}:`, err);
     return {
       probability: 30,
       trend: "FLAT",
@@ -134,29 +145,29 @@ Return JSON only with this schema:
     };
   }
 
-  // Данные свежие — Gemini искала в Google в реальном времени.
-  // Confidence берём из ответа модели (с fallback на MEDIUM).
-  const modelConfidence = (parsed.confidence ?? "MEDIUM").toUpperCase();
-  const enforcedConfidence = (
-    ["HIGH", "MEDIUM", "LOW"].includes(modelConfidence)
-      ? modelConfidence
-      : "MEDIUM"
-  ) as Confidence;
+  // Confidence: если новостей мало или нет — понижаем
+  const newsCount = news.length;
+  let enforcedConfidence: Confidence;
+  const modelConf = (parsed.confidence ?? "MEDIUM").toUpperCase();
+  if (newsCount >= 5) {
+    enforcedConfidence = modelConf === "HIGH" || modelConf === "LOW" ? (modelConf as Confidence) : "MEDIUM";
+  } else if (newsCount >= 2) {
+    enforcedConfidence = modelConf === "LOW" ? "LOW" : "MEDIUM";
+  } else {
+    enforcedConfidence = "LOW";
+  }
 
-  // Антигаллюцинации: фильтруем key_facts, оставляя только те,
-  // чей URL есть в источниках из Google Search grounding.
-  // Если модель не указала URL в key_facts, но есть grounding sources —
-  // добавляем их как верифицированные факты.
-  const allowedUrls = new Set(sources.map((s) => s.url));
+  // Антигаллюцинации: фильтруем key_facts, оставляя только URL из RSS-новостей
+  const allowedUrls = new Set(news.map((n) => n.url));
   let keyFacts: KeyFact[] = (parsed.key_facts ?? [])
-    .filter((f) => f.fact && f.url)
+    .filter((f) => f.fact && f.url && allowedUrls.has(f.url))
     .map((f) => ({ fact: f.fact!, url: f.url! }));
 
-  // Если key_facts пустой, но есть grounding sources — используем их
-  if (keyFacts.length === 0 && sources.length > 0) {
-    keyFacts = sources.slice(0, 5).map((s) => ({
-      fact: s.title || "Source found via Google Search",
-      url: s.url,
+  // Если key_facts пустой, но есть новости — используем их как факты
+  if (keyFacts.length === 0 && news.length > 0) {
+    keyFacts = news.slice(0, 5).map((n) => ({
+      fact: n.title,
+      url: n.url,
     }));
   }
 

@@ -1,9 +1,12 @@
 /// Unified AI interface — использует ТОЛЬКО Google Gemini API.
 ///
-/// Модель: gemini-2.5-flash-lite (бесплатная, быстрая, поддерживает текст).
+/// Модель: gemini-2.5-flash-lite (бесплатная, быстрая).
 ///
 /// ВАЖНО: gemini-2.5-flash-lite НЕ поддерживает Google Search grounding.
 /// Для сбора данных используется Google News RSS (src/lib/rss.ts).
+///
+/// Retry-логика: при ошибках 429 (rate limit) и 503 (overloaded)
+/// выполняется до 5 попыток с экспоненциальной задержкой.
 
 import ZAI from "z-ai-web-dev-sdk";
 
@@ -12,11 +15,16 @@ let _mode: AIMode = "unknown";
 let _zai: ZAI | null = null;
 let _sdkTried = false;
 
-/// Единственная модель — gemini-2.5-flash-lite (как требует пользователь).
+/// Единственная модель — gemini-2.5-flash-lite.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
 
 const GEMINI_BASE_URL =
   "https://generativelanguage.googleapis.com/v1beta/models";
+
+/// Максимальное количество попыток при 429/503 ошибках.
+const MAX_RETRIES = 5;
+/// Базовая задержка между попытками (мс). Удваивается каждую попытку.
+const BASE_DELAY_MS = 5000; // 5с, 10с, 20с, 40с, 80с
 
 export async function initAI(): Promise<AIMode> {
   if (_mode !== "unknown") return _mode;
@@ -41,8 +49,13 @@ export async function initAI(): Promise<AIMode> {
   return _mode;
 }
 
+/// Sleep-утилита.
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /// Chat completion через системный + пользовательский промпт.
-/// Возвращает текст ответа модели (только gemini-2.5-flash-lite).
+/// При 429/503 ошибках выполняет retry с экспоненциальной задержкой.
 export async function llmComplete(
   systemPrompt: string,
   userMessage: string,
@@ -50,7 +63,7 @@ export async function llmComplete(
   await initAI();
 
   if (_mode === "gemini") {
-    return llmCompleteGemini(systemPrompt, userMessage);
+    return llmCompleteGeminiWithRetry(systemPrompt, userMessage);
   }
 
   if (_mode === "sdk" && _zai) {
@@ -74,6 +87,39 @@ export async function llmComplete(
   );
 }
 
+/// Вызов Gemini с retry при временных ошибках (429, 503).
+async function llmCompleteGeminiWithRetry(
+  systemPrompt: string,
+  userMessage: string,
+): Promise<string> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await llmCompleteGemini(systemPrompt, userMessage);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      lastError = err instanceof Error ? err : new Error(msg);
+
+      // Retry только при 429 (rate limit) и 503 (overloaded)
+      const isRetryable = msg.includes("429") || msg.includes("503");
+
+      if (!isRetryable || attempt === MAX_RETRIES) {
+        throw lastError;
+      }
+
+      const delayMs = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+      console.error(
+        `[ai] attempt ${attempt}/${MAX_RETRIES} failed (${msg.slice(0, 80)}...), retrying in ${delayMs / 1000}s...`,
+      );
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError ?? new Error("Unexpected retry loop exit");
+}
+
+/// Базовый вызов Gemini API (generateContent).
 async function llmCompleteGemini(
   systemPrompt: string,
   userMessage: string,
@@ -120,11 +166,9 @@ async function llmCompleteGemini(
   return text;
 }
 
-// ============ Utilities ============
+// ============ Utilities (экспорт) ============
 
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+export { sleep };
 
 export function getAIMode(): AIMode {
   return _mode;

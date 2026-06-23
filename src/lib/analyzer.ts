@@ -13,15 +13,25 @@ import {
 const HORIZON_DAYS = 180;
 const STALE_THRESHOLD_DAYS = 14;
 
-const SYSTEM_INSTRUCTION = `You are an analytical engine estimating the probability of peace (ceasefire, freeze, or treaty) in Ukraine within the next ${HORIZON_DAYS} days.
+/**
+ * Строит системную инструкцию с привязкой к конкретной дате.
+ * Передача CURRENT_DATE критична: без неё модель не знает, от какого дня
+ * считать горизонт 180 дней и проверять свежесть новостей.
+ */
+function buildSystemInstruction(currentDateStr: string): string {
+  return `You are an analytical engine estimating the probability of peace (ceasefire, freeze, or treaty) in Ukraine within the next ${HORIZON_DAYS} days.
 You receive structured data for ONE marker.
 Your output MUST be strict JSON without markdown formatting.
+
+CURRENT_DATE (today): ${currentDateStr}
+ANALYSIS_HORIZON: ${currentDateStr} → ${addDaysStr(currentDateStr, HORIZON_DAYS)} (${HORIZON_DAYS} days)
 
 RULES:
 1. Base your probability (0-100%) ONLY on the provided INPUT_DATA.
 2. Do not invent facts. In "key_facts", you MUST include URLs from INPUT_DATA to verify claims.
-3. If the latest event in INPUT_DATA is older than ${STALE_THRESHOLD_DAYS} days, set confidence to "LOW".
+3. If the latest event in INPUT_DATA is older than ${STALE_THRESHOLD_DAYS} days from CURRENT_DATE (${addDaysStr(currentDateStr, -STALE_THRESHOLD_DAYS)}), set confidence to "LOW".
 4. Trend is relative to the previous week's context.
+5. The 180-day horizon runs from CURRENT_DATE — do not shift it based on news dates.
 
 OUTPUT JSON SCHEMA:
 {
@@ -31,6 +41,7 @@ OUTPUT JSON SCHEMA:
   "rationale_en": "<2-3 sentences explaining the logic>",
   "key_facts": [{"fact": "...", "url": "..."}]
 }`;
+}
 
 export interface KeyFact {
   fact: string;
@@ -50,10 +61,22 @@ export interface AggregateResult {
   summaryEn: string;
 }
 
+/// Форматирует Date в YYYY-MM-DD.
+function fmtDateISO(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/// Прибавляет дни к строке даты YYYY-MM-DD, возвращает YYYY-MM-DD.
+function addDaysStr(dateStr: string, days: number): string {
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return fmtDateISO(d);
+}
+
 /// Удаляем markdown-обёртку и парсим JSON из ответа LLM.
 function extractJson(raw: string): unknown {
   let text = raw.trim();
-  // Срезаем ```json ... ``` или ``` ... ```
+  // Срезаем \`\`\`json ... \`\`\` или \`\`\` ... \`\`\`
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) text = fence[1].trim();
   // Берём первый {...} блок, если есть лишний текст
@@ -84,6 +107,10 @@ function formatNewsData(news: NewsItem[]): string {
 /// Анализ одного маркера: сбор RSS-новостей + LLM-оценка.
 /// Использует ТОЛЬКО gemini-2.5-flash-lite.
 export async function analyzeMarker(marker: MarkerDef): Promise<MarkerAnalysis> {
+  // Якорь времени: текущая дата в UTC
+  const today = startOfTodayUTC();
+  const todayStr = fmtDateISO(today);
+
   // Шаг 1: сбор свежих новостей через Google News RSS
   const news = await fetchGoogleNewsRSS(marker.searchQuery, 8);
   console.log(
@@ -91,13 +118,18 @@ export async function analyzeMarker(marker: MarkerDef): Promise<MarkerAnalysis> 
   );
 
   // Шаг 2: LLM-анализ на основе собранных новостей
-  const userInput = `MARKER_ID: ${marker.id}
+  // CURRENT_DATE передаётся дважды: в системной инструкции (buildSystemInstruction)
+  // и в пользовательском промпте — для надёжности, даже если модель игнорирует system.
+  const userInput = `CURRENT_DATE: ${todayStr}
+MARKER_ID: ${marker.id}
 WEIGHT: ${marker.weight}
 MARKER_LOGIC: ${marker.logic}
 
 ${formatNewsData(news)}
 
-QUESTION: Based on the news data above, estimate the probability of peace in Ukraine within the next ${HORIZON_DAYS} days, considering this marker's logic. Long-term structural signals (multi-year insurance, IMF reviews, reconstruction laws) indicate market expectation of durable peace and raise the probability; active combat and mobilization lower it.
+QUESTION: Based on the news data above, estimate the probability of peace in Ukraine within the next ${HORIZON_DAYS} days (horizon: ${todayStr} → ${addDaysStr(todayStr, HORIZON_DAYS)}), considering this marker's logic. Long-term structural signals (multi-year insurance, IMF reviews, reconstruction laws) indicate market expectation of durable peace and raise the probability; active combat and mobilization lower it.
+
+When checking freshness: compare each news date to CURRENT_DATE (${todayStr}). News older than ${addDaysStr(todayStr, -STALE_THRESHOLD_DAYS)} is stale.
 
 In "key_facts", you MUST include URLs from the INPUT_DATA above to verify claims. Do not invent URLs.
 
@@ -112,7 +144,7 @@ Return JSON only with this schema:
 
   let raw = "";
   try {
-    raw = await llmComplete(SYSTEM_INSTRUCTION, userInput);
+    raw = await llmComplete(buildSystemInstruction(todayStr), userInput);
   } catch (err) {
     console.error(`[analyzer] LLM call failed for ${marker.id}:`, err);
     return {
@@ -218,6 +250,7 @@ export async function calculateAggregate(
   total = clamp(Math.round(total));
 
   // 3. LLM пишет executive summary на основе детерминированного числа
+  const todayStr = fmtDateISO(startOfTodayUTC());
   const markersBrief = scores
     .map(
       (s) =>
@@ -225,7 +258,7 @@ export async function calculateAggregate(
     )
     .join(",\n");
 
-  const aggPrompt = `You are the Aggregator for the Peace Index 180. The weighted-average probability has been computed deterministically as ${total}% (after a freshness penalty of ${heavyLow * 5}% from ${heavyLow} heavy stale markers).
+  const aggPrompt = `You are the Aggregator for the Peace Index 180. Today is ${todayStr}. The weighted-average probability has been computed deterministically as ${total}% (after a freshness penalty of ${heavyLow * 5}% from ${heavyLow} heavy stale markers).
 
 markers = [
 ${markersBrief}
@@ -237,13 +270,13 @@ Write an executive summary (exactly 3 sentences, in English) explaining WHY the 
   try {
     summaryEn = (
       await llmComplete(
-        "You write concise, neutral executive summaries for a peace-probability index.",
+        `You write concise, neutral executive summaries for a peace-probability index. Today's date: ${todayStr}.`,
         aggPrompt,
       )
     ).trim();
   } catch (err) {
     console.error("[analyzer] aggregate summary failed:", err);
-    summaryEn = `Weighted average across ${scores.length} markers yields ${total}% probability of peace within 180 days.`;
+    summaryEn = `Weighted average across ${scores.length} markers yields ${total}% probability of peace within 180 days from ${todayStr}.`;
   }
 
   return { totalProbability: total, summaryEn };
@@ -397,3 +430,4 @@ export function totalWeightOf(markers: MarkerDef[]): number {
 }
 
 export { MARKER_MAP, TOTAL_WEIGHT };
+

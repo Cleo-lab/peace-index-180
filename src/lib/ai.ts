@@ -1,12 +1,13 @@
 /// Unified AI interface — использует ТОЛЬКО Google Gemini API.
 ///
-/// Модель: gemini-2.5-flash-lite (бесплатная, быстрая).
+/// Модель: gemini-3.1-flash-lite (бесплатная, быстрая).
 ///
-/// ВАЖНО: gemini-2.5-flash-lite НЕ поддерживает Google Search grounding.
+/// ВАЖНО: gemini-3.1-flash-lite НЕ поддерживает Google Search grounding.
 /// Для сбора данных используется Google News RSS (src/lib/rss.ts).
 ///
-/// Retry-логика: при ошибках 429 (rate limit) и 503 (overloaded)
-/// выполняется до 5 попыток с экспоненциальной задержкой.
+/// Retry-логика: при ошибках 429/500/503 выполняется до 5 попыток
+/// с экспоненциальной задержкой и jitter.
+/// Circuit breaker: после 3 подряд ошибок — fast-fail для оставшихся маркеров.
 
 import ZAI from "z-ai-web-dev-sdk";
 
@@ -15,16 +16,27 @@ let _mode: AIMode = "unknown";
 let _zai: ZAI | null = null;
 let _sdkTried = false;
 
-/// Единственная модель — gemini-2.5-flash-lite.
+// === Circuit Breaker State ===
+let _consecutiveFailures = 0;
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+let _circuitOpen = false;
+let _circuitOpenUntil = 0;
+const CIRCUIT_BREAKER_COOLDOWN_MS = 60_000; // 1 минута
+
+/// Единственная модель — gemini-3.1-flash-lite.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
 
 const GEMINI_BASE_URL =
   "https://generativelanguage.googleapis.com/v1beta/models";
 
-/// Максимальное количество попыток при 429/503 ошибках.
-const MAX_RETRIES = 5;
-/// Базовая задержка между попытками (мс). Удваивается каждую попытку.
-const BASE_DELAY_MS = 5000; // 5с, 10с, 20с, 40с, 80с
+/// Максимальное количество попыток при retriable ошибках.
+const MAX_RETRIES = Number(process.env.AI_MAX_RETRIES || "5");
+/// Базовая задержка между попытками (мс).
+const BASE_DELAY_MS = Number(process.env.AI_BASE_DELAY_MS || "5000");
+/// Таймаут на один запрос к API (мс).
+const REQUEST_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS || "30000");
+/// Температура для аналитических задач (низкая для стабильности чисел).
+const ANALYTICS_TEMPERATURE = 0.15;
 
 export async function initAI(): Promise<AIMode> {
   if (_mode !== "unknown") return _mode;
@@ -54,8 +66,50 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/// Jitter: добавляет случайность к задержке (±25%), чтобы избежать
+/// thundering herd при восстановлении API.
+function jitteredDelay(baseMs: number, attempt: number): number {
+  const exponential = baseMs * Math.pow(2, attempt - 1);
+  const jitter = exponential * 0.25 * (Math.random() * 2 - 1); // ±25%
+  return Math.max(1000, Math.round(exponential + jitter));
+}
+
+/// Проверяет, открыт ли circuit breaker.
+function checkCircuitBreaker(): void {
+  if (!_circuitOpen) return;
+  if (Date.now() >= _circuitOpenUntil) {
+    // Circuit полузакрыт — даём один шанс
+    _circuitOpen = false;
+    _consecutiveFailures = 0;
+    console.log("[ai] circuit breaker half-open, allowing one request");
+    return;
+  }
+  const remaining = Math.ceil((_circuitOpenUntil - Date.now()) / 1000);
+  throw new Error(
+    `Circuit breaker OPEN: too many consecutive failures. Retry in ${remaining}s.`,
+  );
+}
+
+/// Обновляет состояние circuit breaker после успеха/неудачи.
+function recordSuccess(): void {
+  _consecutiveFailures = 0;
+  _circuitOpen = false;
+}
+
+function recordFailure(): void {
+  _consecutiveFailures++;
+  if (_consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+    _circuitOpen = true;
+    _circuitOpenUntil = Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS;
+    console.error(
+      `[ai] circuit breaker OPENED after ${CIRCUIT_BREAKER_THRESHOLD} consecutive failures. Cooling down for ${CIRCUIT_BREAKER_COOLDOWN_MS / 1000}s.`,
+    );
+  }
+}
+
 /// Chat completion через системный + пользовательский промпт.
-/// При 429/503 ошибках выполняет retry с экспоненциальной задержкой.
+/// При retriable ошибках выполняет retry с экспоненциальной задержкой + jitter.
+/// Использует circuit breaker для защиты от каскадных ошибок.
 export async function llmComplete(
   systemPrompt: string,
   userMessage: string,
@@ -87,28 +141,42 @@ export async function llmComplete(
   );
 }
 
-/// Вызов Gemini с retry при временных ошибках (429, 503).
+/// Вызов Gemini с retry + circuit breaker + timeout при временных ошибках.
 async function llmCompleteGeminiWithRetry(
   systemPrompt: string,
   userMessage: string,
 ): Promise<string> {
+  // Circuit breaker: если API нестабилен — fail fast
+  checkCircuitBreaker();
+
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      return await llmCompleteGemini(systemPrompt, userMessage);
+      const result = await llmCompleteGemini(systemPrompt, userMessage);
+      recordSuccess();
+      return result;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       lastError = err instanceof Error ? err : new Error(msg);
 
-      // Retry только при 429 (rate limit) и 503 (overloaded)
-      const isRetryable = msg.includes("429") || msg.includes("503");
+      // Retry при: 429 (rate limit), 500 (server error), 503 (overloaded),
+      // ECONNRESET, ETIMEDOUT, timeout
+      const isRetryable =
+        msg.includes("429") ||
+        msg.includes("500") ||
+        msg.includes("503") ||
+        msg.includes("ECONNRESET") ||
+        msg.includes("ETIMEDOUT") ||
+        msg.includes("timeout") ||
+        msg.includes("aborted");
 
       if (!isRetryable || attempt === MAX_RETRIES) {
+        recordFailure();
         throw lastError;
       }
 
-      const delayMs = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+      const delayMs = jitteredDelay(BASE_DELAY_MS, attempt);
       console.error(
         `[ai] attempt ${attempt}/${MAX_RETRIES} failed (${msg.slice(0, 80)}...), retrying in ${delayMs / 1000}s...`,
       );
@@ -116,10 +184,47 @@ async function llmCompleteGeminiWithRetry(
     }
   }
 
+  recordFailure();
   throw lastError ?? new Error("Unexpected retry loop exit");
 }
 
-/// Базовый вызов Gemini API (generateContent).
+/// Промпт → JSON Schema для строгой типизации ответа Gemini.
+/// Используем responseMimeType: "application/json" для гарантированного JSON.
+const MARKER_RESPONSE_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    probability: { type: "integer" as const, minimum: 0, maximum: 100 },
+    trend: {
+      type: "string" as const,
+      enum: ["UP", "DOWN", "FLAT"],
+    },
+    confidence: {
+      type: "string" as const,
+      enum: ["HIGH", "MEDIUM", "LOW"],
+    },
+    rationale_en: { type: "string" as const },
+    key_facts: {
+      type: "array" as const,
+      items: {
+        type: "object" as const,
+        properties: {
+          fact: { type: "string" as const },
+          url: { type: "string" as const },
+        },
+        required: ["fact", "url"],
+      },
+    },
+  },
+  required: [
+    "probability",
+    "trend",
+    "confidence",
+    "rationale_en",
+    "key_facts",
+  ],
+};
+
+/// Базовый вызов Gemini API (generateContent) с timeout и JSON-режимом.
 async function llmCompleteGemini(
   systemPrompt: string,
   userMessage: string,
@@ -129,41 +234,73 @@ async function llmCompleteGemini(
 
   const url = `${GEMINI_BASE_URL}/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: "user", parts: [{ text: userMessage }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 2048,
-        topP: 0.95,
-      },
-    }),
-  });
+  // AbortController для таймаута
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Gemini API error ${res.status}: ${text.slice(0, 400)}`);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: userMessage }] }],
+        generationConfig: {
+          temperature: ANALYTICS_TEMPERATURE,
+          maxOutputTokens: 2048,
+          topP: 0.9,
+          // ГАРАНТИРОВАННЫЙ JSON: модель обязана вернуть валидный JSON
+          responseMimeType: "application/json",
+          responseSchema: MARKER_RESPONSE_SCHEMA,
+        },
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Gemini API error ${res.status}: ${text.slice(0, 400)}`);
+    }
+
+    const data = (await res.json()) as {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+      promptFeedback?: { blockReason?: string };
+    };
+
+    if (data.promptFeedback?.blockReason) {
+      throw new Error(`Gemini blocked: ${data.promptFeedback.blockReason}`);
+    }
+
+    // При responseMimeType: "application/json" текст уже валидный JSON
+    const text =
+      data.candidates?.[0]?.content?.parts
+        ?.map((p) => p.text || "")
+        .join("") ?? "";
+
+    if (!text) throw new Error("Gemini API returned empty response");
+    return text;
+  } catch (err) {
+    // Преобразуем AbortError в понятное сообщение
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(
+        `Gemini API timeout after ${REQUEST_TIMEOUT_MS}ms`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
+}
 
-  const data = (await res.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-    promptFeedback?: { blockReason?: string };
-  };
-
-  if (data.promptFeedback?.blockReason) {
-    throw new Error(`Gemini blocked: ${data.promptFeedback.blockReason}`);
-  }
-
-  const text =
-    data.candidates?.[0]?.content?.parts
-      ?.map((p) => p.text || "")
-      .join("") ?? "";
-
-  if (!text) throw new Error("Gemini API returned empty response");
-  return text;
+/// Вызывает LLM и гарантированно парсит JSON через responseSchema.
+/// Возвращает типизированный объект — не нужен ручной extractJson!
+export async function llmCompleteJson<T>(
+  systemPrompt: string,
+  userMessage: string,
+): Promise<T> {
+  const raw = await llmComplete(systemPrompt, userMessage);
+  // При responseMimeType: "application/json" ответ уже валидный JSON
+  return JSON.parse(raw) as T;
 }
 
 // ============ Utilities (экспорт) ============
@@ -178,3 +315,25 @@ export async function trySandboxInit(): Promise<ZAI | null> {
   await initAI();
   return _zai;
 }
+
+/// Статус circuit breaker для мониторинга.
+export function getCircuitBreakerStatus(): {
+  open: boolean;
+  consecutiveFailures: number;
+  openUntil?: number;
+} {
+  return {
+    open: _circuitOpen,
+    consecutiveFailures: _consecutiveFailures,
+    openUntil: _circuitOpen ? _circuitOpenUntil : undefined,
+  };
+}
+
+/// Сброс circuit breaker (для ручного восстановления).
+export function resetCircuitBreaker(): void {
+  _circuitOpen = false;
+  _consecutiveFailures = 0;
+  _circuitOpenUntil = 0;
+  console.log("[ai] circuit breaker manually reset");
+}
+

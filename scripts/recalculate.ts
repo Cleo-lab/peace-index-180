@@ -5,7 +5,7 @@
 /// Требует переменные окружения:
 ///   DATABASE_URL — строка подключения к PostgreSQL (Neon)
 ///   GEMINI_API_KEY — ключ Google Gemini API (рекомендуется, бесплатно)
-///   GEMINI_MODEL — (опц.) модель, по умолчанию gemini-2.5-flash-lite
+///   GEMINI_MODEL — (опц.) модель, по умолчанию gemini-3.1-flash-lite
 
 import { runFullAnalysis } from "../src/lib/analyzer";
 import { getAIMode, initAI } from "../src/lib/ai";
@@ -27,7 +27,7 @@ async function main() {
   const mode = getAIMode();
   const modeLabel =
     mode === "gemini"
-      ? `Google Gemini API (model: ${process.env.GEMINI_MODEL || "gemini-2.5-flash-lite"}) + Google News RSS`
+      ? `Google Gemini API (model: ${process.env.GEMINI_MODEL || "gemini-3.1-flash-lite"}) + Google News RSS`
       : mode === "sdk"
         ? "z-ai SDK (sandbox)"
         : "UNKNOWN — no API key set";

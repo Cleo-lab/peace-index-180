@@ -52,7 +52,8 @@ function parseRSSXml(xml: string, maxItems: number): NewsItem[] {
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
   let match: RegExpExecArray | null;
 
-  while ((match = itemRegex.exec(xml)) !== null && items.length < maxItems) {
+  // Извлекаем максимум до 40 статей для последующей сортировки по свежести
+  while ((match = itemRegex.exec(xml)) !== null && items.length < 40) {
     const block = match[1];
 
     const title = extractTag(block, "title");
@@ -92,7 +93,11 @@ function parseRSSXml(xml: string, maxItems: number): NewsItem[] {
     });
   }
 
-  return items;
+  // СОРТИРОВКА: Располагаем новости от самых свежих к более старым
+  items.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+  // Возвращаем строго запрошенное количество самых актуальных новостей
+  return items.slice(0, maxItems);
 }
 
 function extractTag(xml: string, tag: string): string {

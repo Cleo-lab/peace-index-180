@@ -58,6 +58,11 @@ export const GROUP_META: Record<
   },
 };
 
+// Автоматически вычисляем текущий и прошлый годы, чтобы поиск всегда был актуальным
+const currentYear = new Date().getFullYear(); // 2026
+const prevYear = currentYear - 1; // 2025
+const years = `${prevYear} ${currentYear}`; // "2025 2026"
+
 export const MARKERS: MarkerDef[] = [
   // ===== Группа 1: Международные финансы и Экономика (Высокий вес) =====
   {
@@ -67,8 +72,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Программа IMF EFF",
     group: "finance",
     weight: 10,
-    searchQuery:
-      "IMF Extended Fund Facility Ukraine program review 2024 2025 tranche disbursement",
+    searchQuery: `IMF Extended Fund Facility Ukraine program review ${years} tranche disbursement`,
     logic: "Completion of an IMF EFF review = positive signal. Delays = negative. Continued disbursement indicates macro stabilization expected under peace.",
     sources: ["imf.org/en/News", "IMF Press Releases"],
   },
@@ -79,8 +83,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Страхование военных рисков (MIGA/DFC)",
     group: "finance",
     weight: 10,
-    searchQuery:
-      "MIGA DFC war risk insurance Ukraine long-term guarantee investment facility 2024 2025",
+    searchQuery: `MIGA DFC war risk insurance Ukraine long-term guarantee investment facility ${years}`,
     logic: "New long-term (10+ years) war risk insurance policies are the strongest leading indicator of de-escalation, as markets price in durable peace.",
     sources: ["miga.org", "dfc.gov/news", "ukraineinvest.gov.ua"],
   },
@@ -91,8 +94,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Проекты ЕБРР",
     group: "finance",
     weight: 9,
-    searchQuery:
-      "EBRD European Bank Reconstruction Development Ukraine new projects investment 2024 2025",
+    searchQuery: `EBRD European Bank Reconstruction Development Ukraine new projects investment ${years}`,
     logic: "New multi-year EBRD investments signal long-horizon confidence in Ukraine's stability.",
     sources: ["ebrd.com/where-we-invest/ukraine"],
   },
@@ -103,8 +105,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Трекер помощи Kiel",
     group: "finance",
     weight: 8,
-    searchQuery:
-      "Kiel Institute Ukraine Support Tracker military financial aid update 2024 2025",
+    searchQuery: `Kiel Institute Ukraine Support Tracker military financial aid update ${years}`,
     logic: "Sustained or increasing committed aid suggests continued war posture; declines or shifts to reconstruction packages suggest peace planning.",
     sources: ["kiel-institut.de Ukraine Support Tracker"],
   },
@@ -115,8 +116,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Порты и зерновой коридор",
     group: "finance",
     weight: 8,
-    searchQuery:
-      "Ukraine Black Sea grain corridor ports exports shipping throughput 2024 2025",
+    searchQuery: `Ukraine Black Sea grain corridor ports exports shipping throughput ${years}`,
     logic: "Expanding commercial shipping through Black Sea ports and stable grain exports indicate de-escalation of the maritime threat.",
     sources: ["apk-inform.com/en/news", "uspa.gov.ua"],
   },
@@ -129,8 +129,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Законы ВР по ПИИ",
     group: "law",
     weight: 9,
-    searchQuery:
-      "Verkhovna Rada Ukraine law foreign direct investment concession investor protection 2024 2025",
+    searchQuery: `Verkhovna Rada Ukraine law foreign direct investment concession investor protection ${years}`,
     logic: "New laws easing foreign investor operations and concessions signal preparation for post-war reconstruction.",
     sources: ["rada.gov.ua/en/news"],
   },
@@ -141,8 +140,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Крупная приватизация Prozorro.Sale",
     group: "law",
     weight: 9,
-    searchQuery:
-      "Prozorro Sale Ukraine large privatization state assets tender 2024 2025",
+    searchQuery: `Prozorro Sale Ukraine large privatization state assets tender ${years}`,
     logic: "Resumption of large privatization tenders indicates confidence in long-term stability.",
     sources: ["prozorro.sale API"],
   },
@@ -153,8 +151,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Законодательство ЕС (Eur-Lex)",
     group: "law",
     weight: 8,
-    searchQuery:
-      "EUR-Lex European Union regulation Ukraine accession assistance fund 2024 2025",
+    searchQuery: `EUR-Lex European Union regulation Ukraine accession assistance fund ${years}`,
     logic: "EU legal acts on Ukraine accession, assistance funds, and reconstruction signal durable political commitment.",
     sources: ["eur-lex.europa.eu"],
   },
@@ -167,9 +164,9 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Динамика фронта (ISW)",
     group: "ukraine_military",
     weight: 6,
-    searchQuery:
-      "Institute for the Study of War ISW Ukraine frontline assessment daily update 2024 2025",
-    logic: "Stable or contracting active front line shifts indicate movement toward frozen conflict or ceasefire.",
+    // Усилено: теперь ищет не только фронт, но и угрозы границам (включая фланги со стороны Беларуси)
+    searchQuery: `Institute for the Study of War ISW Ukraine frontline tactical assessment border escalation ${years}`,
+    logic: "Stable or contracting active front line shifts indicate movement toward frozen conflict or ceasefire. Sudden escalation or border military movements signal prolongation risk.",
     sources: ["understandingwar.org"],
   },
   {
@@ -179,8 +176,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Интенсивность боёв (ACLED)",
     group: "ukraine_military",
     weight: 6,
-    searchQuery:
-      "ACLED Ukraine conflict event data combat intensity casualties weekly 2024 2025",
+    searchQuery: `ACLED Ukraine conflict event data combat intensity casualties weekly ${years}`,
     logic: "Declining weekly combat event counts and casualty rates are direct indicators of de-escalation.",
     sources: ["acleddata.com (myACLED)"],
   },
@@ -191,8 +187,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Удары по тылу (Украина)",
     group: "ukraine_military",
     weight: 5,
-    searchQuery:
-      "Ukraine air alerts ballistic missile drone strike rear cities Kyiv Odesa 2024 2025",
+    searchQuery: `Ukraine air alerts ballistic missile drone strike rear cities Kyiv Odesa ${years}`,
     logic: "Frequency and duration of air alerts and rear strikes inversely correlate with proximity to peace.",
     sources: ["alerts.com.ua API"],
   },
@@ -203,8 +198,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Потери техники (Oryx)",
     group: "ukraine_military",
     weight: 5,
-    searchQuery:
-      "Oryx Russia Ukraine equipment losses visually confirmed count tanks vehicles 2024 2025",
+    searchQuery: `Oryx Russia Ukraine equipment losses visually confirmed count tanks vehicles ${years}`,
     logic: "Rate of visually confirmed equipment losses tracks active combat intensity; a sustained drop signals de-escalation.",
     sources: ["github.com/leedrake5/russia-ukraine"],
   },
@@ -217,8 +211,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Официальная риторика РФ",
     group: "russia",
     weight: 4,
-    searchQuery:
-      "Kremlin Russia official statement Ukraine negotiations goals talks Lavrov Putin 2024 2025",
+    searchQuery: `Kremlin Russia official statement Ukraine negotiations goals talks Lavrov Putin ${years}`,
     logic: "Shift from 'goals of SMO will be achieved' to 'ready for negotiations' is a strong peace signal.",
     sources: ["kremlin.ru", "mid.ru"],
   },
@@ -229,8 +222,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Удары по тылу и экономика РФ",
     group: "russia",
     weight: 4,
-    searchQuery:
-      "Russia drone strike refinery oil facility economy sanctions budget deficit 2024 2025",
+    searchQuery: `Russia drone strike refinery oil facility economy sanctions budget deficit ${years}`,
     logic: "Strikes on Russian refineries and budget stress increase Moscow's incentive to negotiate.",
     sources: ["Reuters", "AP"],
   },
@@ -241,8 +233,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Бюджет/мобилизация РФ",
     group: "russia",
     weight: 5,
-    searchQuery:
-      "Russia state budget defense spending mobilization decree conscription Duma 2024 2025",
+    searchQuery: `Russia state budget defense spending mobilization decree conscription Duma ${years}`,
     logic: "Surging defense budget and new mobilization waves indicate war continuation; freezes/reductions signal readiness to settle.",
     sources: ["OSINT Telegram", "State Duma news"],
   },
@@ -255,8 +246,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Заявления G7 / Белого дома",
     group: "politics",
     weight: 2,
-    searchQuery:
-      "G7 White House statement Ukraine peace summit strategy support 2024 2025",
+    searchQuery: `G7 White House statement Ukraine peace summit strategy support ${years}`,
     logic: "Diplomatic statements calling for peace talks or a settlement plan raise short-term probability.",
     sources: ["whitehouse.gov", "Reuters", "AP"],
   },
@@ -267,9 +257,9 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "OSINT Telegram-каналы",
     group: "politics",
     weight: 1,
-    searchQuery:
-      "OSINT Telegram Ukraine Russia war frontline settlement negotiations update 2024 2025",
-    logic: "Aggregate sentiment of top OSINT channels provides a noisy but timely signal of perceived de-escalation.",
+    // Усилено: теперь робот активно собирает резкую риторику лидеров, заявления по Польше, Беларуси и угрозы эскалации
+    searchQuery: `OSINT Telegram Ukraine war sharp statement Zelensky escalation Belarus Poland ${years}`,
+    logic: "Aggregate sentiment of top OSINT channels provides a noisy but timely signal of perceived de-escalation or acute political spikes.",
     sources: ["Top-10 OSINT Telegram channels"],
   },
 ];

@@ -48,6 +48,12 @@ export const metadata: Metadata = {
     description: "AI-аналитика вероятности мира в Украине за 180 дней",
     images: ["/api/share-image?v=0&d=2026-06-24&l=Стагнация"],
   },
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Индекс Мира 180",
+  },
 };
 
 export default function RootLayout({

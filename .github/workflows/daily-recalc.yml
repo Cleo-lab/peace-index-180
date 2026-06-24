@@ -1,37 +1,47 @@
+# .github/workflows/daily-recalc.yml — ФИНАЛЬНАЯ ВЕРСИЯ
 name: Daily Recalculation
 
 on:
   schedule:
-    # 02:00 UTC каждый день
     - cron: '0 2 * * *'
-  # Ручной запуск из вкладки Actions
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force recalculation'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 jobs:
   recalculate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - name: Trigger recalculation via API
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Push database schema
+        run: bun run db:push
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Run recalculation
         run: |
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
-            -X GET \
-            "https://peace-index-180.vercel.app/api/recalculate?secret=${{ secrets.CRON_SECRET }}")
-          
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          
-          echo "Response: $BODY"
-          
-          if [ "$HTTP_CODE" -ne 200 ]; then
-            echo "Error: HTTP $HTTP_CODE"
-            exit 1
+          if [ "${{ github.event.inputs.force }}" == "true" ]; then
+            bun run recalculate --force
+          else
+            bun run recalculate
           fi
-          
-          # Проверяем, что пересчёт действительно запустился
-          if echo "$BODY" | grep -q '"ok":false'; then
-            echo "Recalculation failed: $BODY"
-            exit 1
-          fi
-          
-          echo "Recalculation started successfully"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}

@@ -12,7 +12,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Сырые собранные события по маркерам (аналог raw_events в спецификации)
+/// Сырые собранные события по маркерам (аналог raw_events в спецификации).
+/// Хранятся 30 дней, затем можно чистить. Источник: Google News RSS + NewsAPI fallback.
 model RawEvent {
   id          String   @id @default(cuid())
   markerId    String
@@ -26,31 +27,43 @@ model RawEvent {
   @@index([sourceUrl])
 }
 
-/// Оценки ИИ по каждому маркеру за дату расчёта (аналог marker_scores)
+/// Оценки ИИ по каждому маркеру за дату расчёта (аналог marker_scores).
+/// ШКАЛА: probability ∈ [-100, +100], где:
+///   -100 = максимальная эскалация (война, ядерные угрозы, мобилизация)
+///      0 = стагнация / замороженный конфликт
+///   +100 = гарантированный мир (инвестиции, договоры, демилитаризация)
+/// trend: UP = движение к миру, DOWN = движение к войне, FLAT = без изменений
 model MarkerScore {
   id           String   @id @default(cuid())
   calcDate     DateTime
   markerId     String
-  probability  Int
-  trend        String // UP | DOWN | FLAT
-  confidence   String // HIGH | MEDIUM | LOW
+  probability  Int      // -100 (max escalation) .. +100 (durable peace), 0 = stalemate
+  trend        String   // UP | DOWN | FLAT
+  confidence   String   // HIGH | MEDIUM | LOW
   rationaleEn  String
   rationaleRu  String?
   // Храним как JSON-строку (совместимо с SQLite и PostgreSQL)
   keyFactsJson String
-  weight       Int
+  weight       Int      // Вес маркера на момент расчёта (1..12)
   createdAt    DateTime @default(now())
 
   @@unique([calcDate, markerId])
   @@index([calcDate])
 }
 
-/// Итоговая агрегированная оценка за дату (аналог aggregates)
+/// Итоговая агрегированная оценка за дату (аналог aggregates).
+/// ШКАЛА: totalProbability ∈ [-100, +100] — взвешенное среднее по всем маркерам.
+/// Интерпретация:
+///   -80..-100: война неизбежна
+///   -40..-79:  эскалация нарастает
+///   -20..+19:  стагнация / замороженный конфликт
+///   +20..+59:  мирная тенденция усиливается
+///   +60..+100: мир становится вероятным
 model Aggregate {
   calcDate         DateTime @id
-  totalProbability Int
+  totalProbability Int      // -100 (war) .. +100 (peace), 0 = deadlock
   summaryEn        String
   summaryRu        String?
-  markerCount      Int
+  markerCount      Int      // Сколько маркеров участвовало в расчёте (всего 24)
   createdAt        DateTime @default(now())
 }

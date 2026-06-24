@@ -16,9 +16,11 @@ import {
   CalendarDays,
   Database,
   Clock,
-  Sparkles,
+  AlertTriangle,
+  Shield,
+  Minus,
 } from "lucide-react";
-import { probabilityColor } from "@/lib/colors";
+import { probabilityColor, probabilityTier, probabilityLabelRu } from "@/lib/colors";
 import { toast } from "sonner";
 
 export interface HeroJobView {
@@ -51,11 +53,23 @@ interface HeroSectionProps {
 }
 
 const PHASE_LABEL: Record<string, string> = {
-  analyzing: "ИИ-анализ маркеров (с Google Search)",
+  analyzing: "ИИ-анализ маркеров (с Google News RSS)",
   aggregating: "Агрегация индекса",
   done: "Готово",
   error: "Ошибка",
 };
+
+/// Иконка для текущего тира
+function TierIcon({ p }: { p: number }) {
+  const tier = probabilityTier(p);
+  if (tier === "war" || tier === "escalation") {
+    return <AlertTriangle className="h-4 w-4" />;
+  }
+  if (tier === "high_peace" || tier === "peace_tendency") {
+    return <Shield className="h-4 w-4" />;
+  }
+  return <Minus className="h-4 w-4" />;
+}
 
 export function HeroSection({
   totalProbability,
@@ -70,6 +84,7 @@ export function HeroSection({
   segments,
 }: HeroSectionProps) {
   const color = probabilityColor(totalProbability);
+  const tier = probabilityTier(totalProbability);
   const running = job?.running ?? false;
   const progress = job?.progress ?? null;
   const pct =
@@ -113,6 +128,9 @@ export function HeroSection({
   const lastRunDate = job?.lastRunDate ?? calcDate;
   const elapsedSec = job?.elapsedMs ? Math.round(job.elapsedMs / 1000) : null;
 
+  // Форматируем число со знаком
+  const formattedScore = totalProbability > 0 ? `+${totalProbability}%` : `${totalProbability}%`;
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 12 }}
@@ -133,30 +151,66 @@ export function HeroSection({
       />
 
       <div className="relative grid gap-6 p-6 sm:p-8 lg:grid-cols-2 lg:gap-8 lg:p-10">
-        {/* Левая часть — спидометр с сегментами-вкладами */}
-        <div className="flex items-center justify-center">
-          <SpeedometerGauge value={totalProbability} segments={segments} />
+        {/* Левая часть — круговой спидометр с сегментами-вкладами */}
+        <div className="flex flex-col items-center justify-center">
+          <SpeedometerGauge 
+            value={totalProbability} 
+            segments={segments} 
+            mode="circular"
+          />
+          
+          {/* Легенда под спидометром */}
+          <div className="mt-4 grid grid-cols-5 gap-1 text-[10px] text-muted-foreground">
+            <div className="flex flex-col items-center gap-1">
+              <div className="h-2 w-8 rounded-full" style={{ background: "oklch(0.55 0.24 22)" }} />
+              <span>Война</span>
+              <span className="text-[9px]">-100..-60</span>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <div className="h-2 w-8 rounded-full" style={{ background: "oklch(0.70 0.19 55)" }} />
+              <span>Эскалация</span>
+              <span className="text-[9px]">-60..-20</span>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <div className="h-2 w-8 rounded-full" style={{ background: "oklch(0.7 0 0)" }} />
+              <span>Стагнация</span>
+              <span className="text-[9px]">-20..+20</span>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <div className="h-2 w-8 rounded-full" style={{ background: "oklch(0.78 0.16 80)" }} />
+              <span>Тенденция</span>
+              <span className="text-[9px]">+20..+60</span>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <div className="h-2 w-8 rounded-full" style={{ background: "oklch(0.72 0.19 152)" }} />
+              <span>Мир</span>
+              <span className="text-[9px]">+60..+100</span>
+            </div>
+          </div>
         </div>
 
         {/* Правая часть — summary + meta + actions */}
         <div className="flex flex-col justify-center">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4" style={{ color }} />
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Итоговая оценка аналитика
+            <TierIcon p={totalProbability} />
+            <span 
+              className="text-xs font-semibold uppercase tracking-wider"
+              style={{ color }}
+            >
+              {probabilityLabelRu(totalProbability)}
             </span>
           </div>
 
           <h2 className="mt-2 text-2xl font-bold leading-tight sm:text-3xl">
-            {totalProbability}%{" "}
+            {formattedScore}{" "}
             <span className="text-base font-medium text-muted-foreground">
-              — вероятность мира за 180 дней
+              — динамика мира/войны за 180 дней
             </span>
           </h2>
 
           <p className="mt-1 text-xs text-muted-foreground">
-            Дуга спидометра окрашена по вкладам групп маркеров. Каждый цвет —
-            своя группа, длина сегмента = её вклад в общую оценку.
+            Круговой индикатор: 0° = война (-100%), 180° = стагнация (0%), 360° = мир (+100%).
+            Каждый цветной сегмент — вклад группы маркеров.
           </p>
 
           {/* Summary */}
@@ -205,39 +259,15 @@ export function HeroSection({
               <Clock className="h-3 w-3" />
               горизонт 180 дней
             </Badge>
-          </div>
-
-          {/* Refresh action */}
-          <div className="mt-5 flex items-center gap-3">
-            <Button
-              onClick={onRefresh}
-              disabled={running}
-              className="gap-2 rounded-full"
-              style={running ? undefined : { backgroundColor: color, color: "white" }}
+            {/* Индикатор тира */}
+            <Badge 
+              variant="outline" 
+              className="gap-1.5 rounded-full"
+              style={{ borderColor: color, color }}
             >
-              {running ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-              {running ? "Пересчёт…" : "Обновить данные"}
-            </Button>
-            {!running && lastRunDate && (
-              <span className="text-xs text-muted-foreground">
-                {job?.lastError ? (
-                  <span className="text-rose-500">ошибка последнего пересчёта</span>
-                ) : (
-                  <>
-                    обновлено{" "}
-                    {new Date(lastRunDate).toLocaleDateString("ru-RU", {
-                      day: "numeric",
-                      month: "short",
-                    })}
-                    {elapsedSec ? ` · ${elapsedSec}с` : ""}
-                  </>
-                )}
-              </span>
-            )}
+              <TierIcon p={totalProbability} />
+              {probabilityLabelRu(totalProbability)}
+            </Badge>
           </div>
 
           {/* Прогресс пересчёта */}

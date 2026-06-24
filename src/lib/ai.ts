@@ -5,6 +5,9 @@
 /// ВАЖНО: gemini-3.1-flash-lite НЕ поддерживает Google Search grounding.
 /// Для сбора данных используется Google News RSS (src/lib/rss.ts).
 ///
+/// ШКАЛА АНАЛИЗА: -100 (максимальная эскалация/война) → 0 (стагнация) → +100 (гарантированный мир).
+/// Модель обязана возвращать probability в этом диапазоне.
+///
 /// Retry-логика: при ошибках 429/500/503 выполняется до 5 попыток
 /// с экспоненциальной задержкой и jitter.
 /// Circuit breaker: после 3 подряд ошибок — fast-fail для оставшихся маркеров.
@@ -189,11 +192,11 @@ async function llmCompleteGeminiWithRetry(
 }
 
 /// Промпт → JSON Schema для строгой типизации ответа Gemini.
-/// Используем responseMimeType: "application/json" для гарантированного JSON.
+/// ШКАЛА: probability ∈ [-100, +100], где -100 = макс. эскалация, +100 = мир.
 const MARKER_RESPONSE_SCHEMA = {
   type: "object" as const,
   properties: {
-    probability: { type: "integer" as const, minimum: 0, maximum: 100 },
+    probability: { type: "integer" as const, minimum: -100, maximum: 100 },
     trend: {
       type: "string" as const,
       enum: ["UP", "DOWN", "FLAT"],
@@ -294,13 +297,35 @@ async function llmCompleteGemini(
 
 /// Вызывает LLM и гарантированно парсит JSON через responseSchema.
 /// Возвращает типизированный объект — не нужен ручной extractJson!
+/// Дополнительно выполняет пост-валидацию: probability клэмпится в [-100, 100].
 export async function llmCompleteJson<T>(
   systemPrompt: string,
   userMessage: string,
 ): Promise<T> {
   const raw = await llmComplete(systemPrompt, userMessage);
   // При responseMimeType: "application/json" ответ уже валидный JSON
-  return JSON.parse(raw) as T;
+  const parsed = JSON.parse(raw) as T;
+
+  // ===== Пост-валидация маркерных ответов =====
+  // Защита от редких случаев, когда модель игнорирует JSON Schema
+  if (parsed && typeof parsed === "object" && "probability" in parsed) {
+    const p = (parsed as Record<string, unknown>).probability;
+    if (typeof p === "number") {
+      if (p < -100 || p > 100) {
+        console.warn(
+          `[ai] probability ${p} out of [-100, 100] range, clamping`,
+        );
+        (parsed as Record<string, unknown>).probability = clampProbability(p);
+      }
+    }
+  }
+
+  return parsed;
+}
+
+/// Безопасное ограничение probability в диапазон [-100, 100].
+export function clampProbability(n: number): number {
+  return Math.max(-100, Math.min(100, Math.round(n)));
 }
 
 // ============ Utilities (экспорт) ============
@@ -336,4 +361,3 @@ export function resetCircuitBreaker(): void {
   _circuitOpenUntil = 0;
   console.log("[ai] circuit breaker manually reset");
 }
-

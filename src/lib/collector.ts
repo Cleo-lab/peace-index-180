@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { searchWeb, sleep, type SearchResult } from "@/lib/ai";
+import { fetchNews, sleep, type NewsItem } from "@/lib/rss";
 import { MARKERS, type MarkerDef } from "@/lib/markers";
 
 export interface CollectedEvent {
@@ -8,6 +8,8 @@ export interface CollectedEvent {
   sourceUrl: string;
   sourceName: string;
   rawText: string;
+  /// Релевантность события к маркеру (0-1)
+  relevance: number;
 }
 
 function parseDate(raw?: string): Date | null {
@@ -17,12 +19,12 @@ function parseDate(raw?: string): Date | null {
   return null;
 }
 
-/// Сбор данных для ОДНОГО маркера через веб-поиск.
+/// Сбор данных для ОДНОГО маркера через веб-поиск (RSS + fallback).
 /// Возвращает список событий и сохраняет их в БД (с дедупликацией по sourceUrl).
 export async function collectMarker(marker: MarkerDef): Promise<CollectedEvent[]> {
-  let items: SearchResult[] = [];
+  let items: NewsItem[] = [];
   try {
-    items = await searchWeb(marker.searchQuery, 8);
+    items = await fetchNews(marker.searchQuery, 12);
   } catch (err) {
     console.error(`[collector] search failed for ${marker.id}:`, err);
     return [];
@@ -34,22 +36,26 @@ export async function collectMarker(marker: MarkerDef): Promise<CollectedEvent[]
   for (const it of items) {
     const url = it.url?.trim();
     if (!url) continue;
-    const text = (it.snippet || it.name || "").trim();
+    const text = (it.snippet || it.title || "").trim();
     if (!text) continue;
 
-    const eventDate = parseDate(it.date) ?? now;
+    const eventDate = parseDate(it.date?.toISOString()) ?? now;
     events.push({
       markerId: marker.id,
       eventDate,
       sourceUrl: url,
-      sourceName: it.host_name || it.name || "unknown",
+      sourceName: it.source || "unknown",
       rawText: text,
+      relevance: it.relevance || 0.5,
     });
   }
 
   // Дедупликация + сохранение в БД
   if (events.length > 0) {
     try {
+      // Сортируем по релевантности (сначала самые релевантные)
+      events.sort((a, b) => b.relevance - a.relevance);
+
       const seen = new Set<string>();
       const unique: CollectedEvent[] = [];
       for (const ev of events) {
@@ -73,6 +79,7 @@ export async function collectMarker(marker: MarkerDef): Promise<CollectedEvent[]
             sourceUrl: ev.sourceUrl,
             sourceName: ev.sourceName,
             rawText: ev.rawText,
+            // relevance не хранится в схеме Prisma — можно добавить позже
           })),
         });
       }
@@ -87,6 +94,7 @@ export async function collectMarker(marker: MarkerDef): Promise<CollectedEvent[]
 }
 
 /// Возвращает события по маркеру за последние `days` дней (из БД).
+/// Сортирует по релевантности (если доступно) и дате.
 export async function getRecentEvents(
   markerId: string,
   days = 30,
@@ -106,18 +114,64 @@ export async function getRecentEvents(
     sourceUrl: r.sourceUrl,
     sourceName: r.sourceName,
     rawText: r.rawText,
+    relevance: 0.5, // Базовое значение для старых записей
   }));
 }
 
 /// Полный сбор по всем маркерам с паузами между запросами.
+/// Сортирует маркеры по весу (высоковесные первыми) для приоритизации.
 export async function collectAll(
   onProgress?: (marker: MarkerDef, count: number, idx: number, total: number) => void,
 ): Promise<void> {
-  const total = MARKERS.length;
-  for (let i = 0; i < MARKERS.length; i++) {
-    const marker = MARKERS[i];
+  // Сортируем: сначала высоковесные (finance, law, escalation), потом остальные
+  const sortedMarkers = [...MARKERS].sort((a, b) => b.weight - a.weight);
+  const total = sortedMarkers.length;
+
+  for (let i = 0; i < sortedMarkers.length; i++) {
+    const marker = sortedMarkers[i];
     const events = await collectMarker(marker);
     onProgress?.(marker, events.length, i + 1, total);
-    await sleep(400);
+    // Увеличили паузу с 400 до 500 мс из-за большего количества маркеров
+    await sleep(500);
   }
+}
+
+/// Сбор по конкретной группе маркеров (для частичного обновления).
+export async function collectGroup(
+  groupKey: string,
+  onProgress?: (marker: MarkerDef, count: number, idx: number, total: number) => void,
+): Promise<void> {
+  const groupMarkers = MARKERS.filter((m) => m.group === groupKey);
+  const total = groupMarkers.length;
+
+  for (let i = 0; i < groupMarkers.length; i++) {
+    const marker = groupMarkers[i];
+    const events = await collectMarker(marker);
+    onProgress?.(marker, events.length, i + 1, total);
+    await sleep(500);
+  }
+}
+
+/// Экстренный сбор по маркерам эскалации (для быстрого реагирования на кризис).
+export async function collectEscalationMarkers(
+  onProgress?: (marker: MarkerDef, count: number) => void,
+): Promise<CollectedEvent[]> {
+  const escalationMarkers = MARKERS.filter((m) => m.group === "escalation");
+  const allEvents: CollectedEvent[] = [];
+
+  for (const marker of escalationMarkers) {
+    const events = await collectMarker(marker);
+    allEvents.push(...events);
+    onProgress?.(marker, events.length);
+    await sleep(300);
+  }
+
+  // Сортируем по релевантности и дате
+  allEvents.sort((a, b) => {
+    const relDiff = b.relevance - a.relevance;
+    if (Math.abs(relDiff) > 0.1) return relDiff;
+    return b.eventDate.getTime() - a.eventDate.getTime();
+  });
+
+  return allEvents;
 }

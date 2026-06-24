@@ -28,6 +28,26 @@ export const metadata: Metadata = {
     "open data",
   ],
   authors: [{ name: "Peace Index 180" }],
+  openGraph: {
+    title: "Индекс Мира 180 — Peace Index 180",
+    description: "AI-аналитика вероятности мира в Украине за 180 дней",
+    url: "https://peace-index-180.vercel.app/",
+    siteName: "Peace Index 180",
+    images: [{
+      url: "/api/share-image?v=0&d=2026-06-24&l=Стагнация",
+      width: 1200,
+      height: 630,
+      alt: "Индекс Мира 180",
+    }],
+    locale: "ru_RU",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Индекс Мира 180",
+    description: "AI-аналитика вероятности мира в Украине за 180 дней",
+    images: ["/api/share-image?v=0&d=2026-06-24&l=Стагнация"],
+  },
 };
 
 export default function RootLayout({

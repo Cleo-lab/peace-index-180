@@ -1,6 +1,7 @@
 import { runFullAnalysis, translateToRussian, type RunProgress } from "@/lib/analyzer";
 import { db } from "@/lib/db";
 import { startOfTodayUTC } from "@/lib/analyzer";
+import { MARKERS } from "@/lib/markers";
 
 /// In-memory состояние фонового job пересчёта.
 /// Достаточно для single-instance sandbox-окружения.
@@ -27,13 +28,17 @@ export function getJobState(): Readonly<JobState> {
 }
 
 /// Запускает полный пересчёт в фоне (не блокирует HTTP-ответ).
+/// Маркеры обрабатываются по приоритету: сначала высоковесные (finance, law, escalation).
 export function startRecalculation(): { started: boolean; reason?: string } {
   if (state.running) {
     return { started: false, reason: "already-running" };
   }
+
+  const totalMarkers = MARKERS.length;
+
   state = {
     running: true,
-    progress: { phase: "collecting", current: "Starting…", idx: 0, total: 17 },
+    progress: { phase: "analyzing", current: "Starting…", idx: 0, total: totalMarkers },
     startedAt: Date.now(),
     finishedAt: null,
     lastError: null,

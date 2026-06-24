@@ -8,50 +8,64 @@ import { cn } from "@/lib/utils";
 export interface SegmentDef {
   groupKey: string;
   label: string;
-  /// Вклад группы в общую оценку, в процентных пунктах (0-100).
+  /// Вклад группы в общую оценку, в процентных пунктах (-100..+100).
   contribution: number;
   /// Средняя вероятность группы (для тултипа).
   avgProbability: number;
 }
 
 interface SpeedometerGaugeProps {
-  value: number; // итоговая вероятность 0-100
+  value: number; // итоговая оценка -100..+100
   segments: SegmentDef[];
   className?: string;
+  /// Режим отображения: полукруг (классика) или полный круг (360°).
+  mode?: "semicircle" | "circular";
 }
 
-// ===== Геометрия спидометра (270° — классическая форма с зазором снизу) =====
-// Углы в «компасных» градусах: 0 = верх (12 часов), 90 = право, 180 = низ, 270 = лево.
-// 0% → 225° (нижне-лево, ~7-8 часов)
-// 50% → 0° (верх, 12 часов)
-// 100% → 135° (нижне-право, ~4-5 часов)
+// ===== Геометрия =====
 const CX = 160;
-const CY = 155;
-const R = 112;
-const STROKE = 22;
-const START_ANGLE = 225;
-const SWEEP = 270;
+const CY = 160;
+const R = 108;
+const STROKE = 20;
 const VIEW_W = 320;
-// viewBox начинается с Y=-12, чтобы дать место для метки "50" сверху
-const VIEW_BOX = "0 -12 320 292";
+const VIEW_H = 320;
+
+// Полукруг: 270° с зазором снизу. 0% → 225°, 50% → 0° (верх), 100% → 135°
+const SEMI_START_ANGLE = 225;
+const SEMI_SWEEP = 270;
+
+// Круг: полный 360°. -100% → 0° (верх), 0% → 180° (низ), +100% → 360° (верх)
+const CIRC_START_ANGLE = 0;
+const CIRC_SWEEP = 360;
 
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 }
 
-function valueToAngle(v: number): number {
-  return START_ANGLE + (v / 100) * SWEEP;
+function valueToAngle(v: number, mode: "semicircle" | "circular"): number {
+  if (mode === "circular") {
+    // -100..+100 → 0°..360°
+    const normalized = Math.max(-100, Math.min(100, v));
+    return CIRC_START_ANGLE + ((normalized + 100) / 200) * CIRC_SWEEP;
+  }
+  // semicircle: 0..100 → 225°..135° (через 0° сверху)
+  const normalized = Math.max(0, Math.min(100, v));
+  return SEMI_START_ANGLE + (normalized / 100) * SEMI_SWEEP;
 }
 
-function arcPath(cx: number, cy: number, r: number, v1: number, v2: number): string {
-  const a1 = valueToAngle(v1);
-  const a2 = valueToAngle(v2);
+function arcPath(
+  cx: number,
+  cy: number,
+  r: number,
+  a1: number,
+  a2: number
+): string {
   const p1 = polar(cx, cy, r, a1);
   const p2 = polar(cx, cy, r, a2);
-  const largeArc = a2 - a1 > 180 ? 1 : 0;
-  // sweep=1 — по часовой стрелке в SVG (y вниз)
-  return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} A ${r} ${r} 0 ${largeArc} 1 ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  const largeArc = Math.abs(a2 - a1) > 180 ? 1 : 0;
+  const sweep = a2 > a1 ? 1 : 0;
+  return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} A ${r} ${r} 0 ${largeArc} ${sweep} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
 }
 
 function useCountUp(target: number, duration = 1100) {
@@ -80,20 +94,28 @@ export function SpeedometerGauge({
   value,
   segments,
   className,
+  mode = "semicircle",
 }: SpeedometerGaugeProps) {
-  const v = Math.max(0, Math.min(100, value));
-  const animatedValue = useCountUp(v);
-  const displayValue = Math.round(animatedValue);
-  const totalColor = probabilityColor(v);
+  const isCircular = mode === "circular";
+  const clampedValue = isCircular
+    ? Math.max(-100, Math.min(100, value))
+    : Math.max(0, Math.min(100, value));
 
-  // Нормируем вклады к итогу
-  const sumContrib = segments.reduce((s, x) => s + x.contribution, 0) || 1;
+  const animatedValue = useCountUp(clampedValue);
+  const displayValue = Math.round(animatedValue);
+  const totalColor = probabilityColor(clampedValue);
+
+  // ===== Нормализация сегментов =====
+  // Для кругового режима: contribution может быть отрицательным.
+  // Суммируем абсолютные вклады для пропорций дуги.
+  const sumAbsContrib =
+    segments.reduce((s, x) => s + Math.abs(x.contribution), 0) || 1;
   const normalized = segments.map((s) => ({
     ...s,
-    scaled: (s.contribution / sumContrib) * v,
+    scaled: (Math.abs(s.contribution) / sumAbsContrib) * 200, // 200 = полный круг в "условных %" для дуги
   }));
 
-  // Кумулятивные границы сегментов
+  // Кумулятивные границы сегментов (в градусах для кругового, в 0..100 для полукруга)
   const { list: segmentBounds } = normalized.reduce(
     (acc, s) => {
       const start = acc.cursor;
@@ -103,50 +125,99 @@ export function SpeedometerGauge({
       return acc;
     },
     {
-      cursor: 0,
-      list: [] as Array<(typeof normalized)[number] & { start: number; end: number }>,
-    },
+      cursor: isCircular ? 0 : 0,
+      list: [] as Array<
+        (typeof normalized)[number] & { start: number; end: number }
+      >,
+    }
   );
 
-  // Стрелка
-  const needleAngle = valueToAngle(animatedValue);
+  // ===== Стрелка =====
+  const needleAngle = valueToAngle(animatedValue, mode);
   const needleLen = R - STROKE - 14;
   const needleEnd = polar(CX, CY, needleLen, needleAngle);
   const needleBase1 = polar(CX, CY, 9, needleAngle + 90);
   const needleBase2 = polar(CX, CY, 9, needleAngle - 90);
 
-  // Тики шкалы
-  const allTicks = [0, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100];
-  const majorTicks = [0, 25, 50, 75, 100];
+  // ===== Тики и метки =====
+  const circTicks = [-100, -75, -50, -25, 0, 25, 50, 75, 100];
+  const circMajorTicks = [-100, -50, 0, 50, 100];
+  const semiTicks = [0, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100];
+  const semiMajorTicks = [0, 25, 50, 75, 100];
+
+  const allTicks = isCircular ? circTicks : semiTicks;
+  const majorTicks = isCircular ? circMajorTicks : semiMajorTicks;
+
+  // ===== viewBox =====
+  const viewBox = isCircular
+    ? `0 0 ${VIEW_W} ${VIEW_H}`
+    : "0 -12 320 292";
+
+  // ===== Подпись центра =====
+  const centerLabel = isCircular ? "динамика мира/войны" : "вероятность мира";
+  const formattedDisplay = isCircular
+    ? `${displayValue > 0 ? "+" : ""}${displayValue}`
+    : `${displayValue}`;
 
   return (
     <div className={cn("flex flex-col items-center", className)}>
       <div className="relative w-full max-w-[360px]">
         <svg
-          viewBox={VIEW_BOX}
+          viewBox={viewBox}
           className="w-full"
           role="img"
-          aria-label={`Спидометр вероятности мира: ${v} процентов. Цветные сегменты показывают вклад групп маркеров.`}
+          aria-label={
+            isCircular
+              ? `Круговой индикатор мира/войны: ${clampedValue}%. Цветные сегменты показывают вклад групп маркеров.`
+              : `Спидометр вероятности мира: ${clampedValue} процентов. Цветные сегменты показывают вклад групп маркеров.`
+          }
         >
-          {/* Фоновая шкала: полная дуга 0–100 (видимая серая дорожка) */}
-          <path
-            d={arcPath(CX, CY, R, 0, 100)}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={STROKE}
-            strokeLinecap="butt"
-            className="text-muted-foreground"
-            opacity={0.18}
-          />
+          {/* Фоновая дорожка */}
+          {isCircular ? (
+            // Полный круг — фоновая окружность
+            <circle
+              cx={CX}
+              cy={CY}
+              r={R}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={STROKE}
+              className="text-muted-foreground"
+              opacity={0.12}
+            />
+          ) : (
+            // Полукруг — дуга
+            <path
+              d={arcPath(CX, CY, R, SEMI_START_ANGLE, SEMI_START_ANGLE + SEMI_SWEEP)}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={STROKE}
+              strokeLinecap="butt"
+              className="text-muted-foreground"
+              opacity={0.18}
+            />
+          )}
 
           {/* Цветные сегменты-вклады */}
           {segmentBounds.map((seg, i) => {
-            if (seg.end - seg.start < 0.05) return null;
+            if (seg.end - seg.start < 0.5) return null;
             const color = groupColor(seg.groupKey);
+
+            let d: string;
+            if (isCircular) {
+              // Круговой: start/end в градусах
+              d = arcPath(CX, CY, R, seg.start, seg.end);
+            } else {
+              // Полукруг: start/end в 0..100
+              const a1 = SEMI_START_ANGLE + (seg.start / 100) * SEMI_SWEEP;
+              const a2 = SEMI_START_ANGLE + (seg.end / 100) * SEMI_SWEEP;
+              d = arcPath(CX, CY, R, a1, a2);
+            }
+
             return (
               <motion.path
                 key={seg.groupKey}
-                d={arcPath(CX, CY, R, seg.start, seg.end)}
+                d={d}
                 fill="none"
                 stroke={color}
                 strokeWidth={STROKE}
@@ -160,8 +231,9 @@ export function SpeedometerGauge({
                 }}
               >
                 <title>
-                  {seg.label}: вклад {seg.contribution.toFixed(1)}% (средняя
-                  вероятность {Math.round(seg.avgProbability)}%)
+                  {seg.label}: вклад {seg.contribution > 0 ? "+" : ""}
+                  {seg.contribution.toFixed(1)} (средняя оценка{" "}
+                  {Math.round(seg.avgProbability)})
                 </title>
               </motion.path>
             );
@@ -169,7 +241,7 @@ export function SpeedometerGauge({
 
           {/* Тики шкалы */}
           {allTicks.map((tick) => {
-            const a = valueToAngle(tick);
+            const a = valueToAngle(tick, mode);
             const isMajor = majorTicks.includes(tick);
             const tickLen = isMajor ? 9 : 4;
             const p1 = polar(CX, CY, R + STROKE / 2 + 1, a);
@@ -190,8 +262,10 @@ export function SpeedometerGauge({
 
           {/* Числовые метки шкалы */}
           {majorTicks.map((tick) => {
-            const a = valueToAngle(tick);
-            const p = polar(CX, CY, R + STROKE / 2 + 16, a);
+            const a = valueToAngle(tick, mode);
+            const labelOffset = isCircular && (tick === -100 || tick === 100) ? 20 : 16;
+            const p = polar(CX, CY, R + STROKE / 2 + labelOffset, a);
+            const label = isCircular && tick > 0 ? `+${tick}` : `${tick}`;
             return (
               <text
                 key={tick}
@@ -203,7 +277,7 @@ export function SpeedometerGauge({
                 fill="var(--muted-foreground)"
                 fontWeight={600}
               >
-                {tick}
+                {label}
               </text>
             );
           })}
@@ -226,37 +300,37 @@ export function SpeedometerGauge({
             <circle cx={CX} cy={CY} r={5} fill="var(--background)" />
           </motion.g>
 
-          {/* Центральная подпись — в зазоре снизу, под основанием стрелки */}
+          {/* Центральная подпись */}
           <text
             x={CX}
-            y={CY + 52}
+            y={CY + 50}
             textAnchor="middle"
-            fontSize="38"
+            fontSize="36"
             fontWeight="700"
             fill={totalColor}
             style={{ fontVariantNumeric: "tabular-nums" }}
           >
-            {displayValue}
-            <tspan fontSize="22" dy="-4" opacity={0.6}>
+            {formattedDisplay}
+            <tspan fontSize="20" dy="-4" opacity={0.6}>
               %
             </tspan>
           </text>
           <text
             x={CX}
-            y={CY + 72}
+            y={CY + 68}
             textAnchor="middle"
             fontSize="11"
             fill="var(--muted-foreground)"
             fontWeight={500}
           >
-            вероятность мира
+            {centerLabel}
           </text>
         </svg>
       </div>
 
       {/* Тир вероятности */}
       <span
-        className="mt-1 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
+        className="mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
         style={{
           color: totalColor,
           backgroundColor: `color-mix(in oklch, ${totalColor} 14%, transparent)`,
@@ -266,14 +340,16 @@ export function SpeedometerGauge({
           className="h-1.5 w-1.5 rounded-full"
           style={{ backgroundColor: totalColor }}
         />
-        {probabilityLabelRu(v)} вероятность
+        {probabilityLabelRu(clampedValue)}
       </span>
 
       {/* Легенда вкладов групп */}
       <div className="mt-4 w-full max-w-[360px] space-y-1.5">
         {segmentBounds.map((seg) => {
           const color = groupColor(seg.groupKey);
-          const shareOfTotal = v > 0 ? (seg.contribution / v) * 100 : 0;
+          const totalAbs = segments.reduce((s, x) => s + Math.abs(x.contribution), 0) || 1;
+          const shareOfTotal = (Math.abs(seg.contribution) / totalAbs) * 100;
+          const sign = seg.contribution > 0 ? "+" : "";
           return (
             <div
               key={seg.groupKey}
@@ -290,7 +366,8 @@ export function SpeedometerGauge({
                 className="font-mono font-semibold tabular-nums"
                 style={{ color }}
               >
-                +{seg.contribution.toFixed(1)}
+                {sign}
+                {seg.contribution.toFixed(1)}
               </span>
               <span className="w-10 text-right text-[10px] text-muted-foreground">
                 {Math.round(shareOfTotal)}%

@@ -13,32 +13,37 @@ import {
 const HORIZON_DAYS = 180;
 const STALE_THRESHOLD_DAYS = 14;
 
-/**
- * Строит системную инструкцию с привязкой к конкретной дате.
- * Передача CURRENT_DATE критична: без неё модель не знает, от какого дня
- * считать горизонт 180 дней и проверять свежесть новостей.
- */
 function buildSystemInstruction(currentDateStr: string): string {
-  return `You are an analytical engine estimating the probability of peace (ceasefire, freeze, or treaty) in Ukraine within the next ${HORIZON_DAYS} days.
-You receive structured data for ONE marker.
+  return `You are an analytical engine estimating the Peace & Escalation Index for Ukraine within the next ${HORIZON_DAYS} days.
 Your output MUST be strict JSON without markdown formatting.
 
 CURRENT_DATE (today): ${currentDateStr}
 ANALYSIS_HORIZON: ${currentDateStr} → ${addDaysStr(currentDateStr, HORIZON_DAYS)} (${HORIZON_DAYS} days)
 
+SCALE DEFINITION (-100 to +100):
+• +100 = Guaranteed durable peace: signed treaties, massive foreign reconstruction investments ($50B+), demilitarized zones, full prisoner exchanges.
+• +60 to +99 = Strong peace signals: new long-term insurance policies, large privatization to foreign investors, EU accession progress, IMF reviews completed.
+• +20 to +59 = Moderate peace tendency: grain corridor expansion, diplomatic statements, reduced combat intensity.
+• -19 to +19 = Frozen conflict / deadlock: no significant movement, balanced positive and negative signals.
+• -20 to -59 = Escalation tendency: increased mobilization, diplomatic demarches, energy infrastructure strikes, rhetoric sharpening.
+• -60 to -99 = Strong escalation signals: Belarus military mobilization, nuclear threats, new front openings, mass civilian evacuation.
+• -100 = Total war escalation: Belarus enters war, tactical nuclear use, full mobilization, collapse of diplomatic channels.
+
 RULES:
-1. Base your probability (0-100%) ONLY on the provided INPUT_DATA.
-2. Do not invent facts. In "key_facts", you MUST include URLs from INPUT_DATA to verify claims.
-3. If the latest event in INPUT_DATA is older than ${STALE_THRESHOLD_DAYS} days from CURRENT_DATE (${addDaysStr(currentDateStr, -STALE_THRESHOLD_DAYS)}), set confidence to "LOW".
-4. Trend is relative to the previous week's context.
-5. The 180-day horizon runs from CURRENT_DATE — do not shift it based on news dates.
+1. Base your score (integer from -100 to 100) ONLY on the provided INPUT_DATA.
+2. Economic, financial, concession, and privatization signals carry the HIGHEST weight toward positive scores.
+3. Military mobilization (especially Belarus), nuclear rhetoric, energy infrastructure destruction, and diplomatic demarches carry HIGH weight toward negative scores.
+4. Pure political statements WITHOUT concrete action carry LOW weight in either direction.
+5. Do not invent facts. In "key_facts", you MUST include URLs from INPUT_DATA to verify claims.
+6. If the latest event in INPUT_DATA is older than ${STALE_THRESHOLD_DAYS} days from CURRENT_DATE, set confidence to "LOW" and bias toward 0 (uncertainty).
+7. When multiple contradictory signals exist, weight financial/investment signals higher than political rhetoric.
 
 OUTPUT JSON SCHEMA:
 {
-  "probability": <int 0-100>,
+  "probability": <int between -100 and 100>,
   "trend": "<UP|DOWN|FLAT>",
   "confidence": "<HIGH|MEDIUM|LOW>",
-  "rationale_en": "<2-3 sentences explaining the logic>",
+  "rationale_en": "<2-3 sentences explaining the logic, referencing specific events and scores>",
   "key_facts": [{"fact": "...", "url": "..."}]
 }`;
 }
@@ -61,25 +66,20 @@ export interface AggregateResult {
   summaryEn: string;
 }
 
-/// Форматирует Date в YYYY-MM-DD.
 function fmtDateISO(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/// Прибавляет дни к строке даты YYYY-MM-DD, возвращает YYYY-MM-DD.
 function addDaysStr(dateStr: string, days: number): string {
   const d = new Date(dateStr + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + days);
   return fmtDateISO(d);
 }
 
-/// Удаляем markdown-обёртку и парсим JSON из ответа LLM.
 function extractJson(raw: string): unknown {
   let text = raw.trim();
-  // Срезаем \`\`\`json ... \`\`\` или \`\`\` ... \`\`\`
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) text = fence[1].trim();
-  // Берём первый {...} блок, если есть лишний текст
   const first = text.indexOf("{");
   const last = text.lastIndexOf("}");
   if (first !== -1 && last !== -1 && last > first) {
@@ -88,11 +88,10 @@ function extractJson(raw: string): unknown {
   return JSON.parse(text);
 }
 
-function clamp(n: number, min = 0, max = 100): number {
+function clamp(n: number, min = -100, max = 100): number {
   return Math.max(min, Math.min(max, n));
 }
 
-/// Формирует INPUT_DATA из новостей RSS для промпта маркера.
 function formatNewsData(news: NewsItem[]): string {
   if (news.length === 0) {
     return "INPUT_DATA (recent news): (no recent news found via Google News RSS)";
@@ -104,30 +103,64 @@ function formatNewsData(news: NewsItem[]): string {
   return `INPUT_DATA (recent news from Google News RSS):\n${lines.join("\n")}`;
 }
 
-/// Анализ одного маркера: сбор RSS-новостей + LLM-оценка.
-/// Использует ТОЛЬКО gemini-2.5-flash-lite.
+/// Fallback score based on marker group when no news available
+function getGroupFallbackScore(group: string): number {
+  switch (group) {
+    case "finance":
+      return 5; // Slight positive bias — financial markets tend toward stability
+    case "law":
+      return 5; // Legislative processes continue even during war
+    case "escalation":
+      return -5; // Slight negative bias — absence of news doesn't mean absence of risk
+    case "ukraine_military":
+      return -3; // Military situation tends to deteriorate without active diplomacy
+    case "russia":
+      return -2; // Russian posture generally hostile
+    case "politics":
+      return 0; // Pure politics is noise
+    default:
+      return 0;
+  }
+}
+
 export async function analyzeMarker(marker: MarkerDef): Promise<MarkerAnalysis> {
-  // Якорь времени: текущая дата в UTC
   const today = startOfTodayUTC();
   const todayStr = fmtDateISO(today);
 
-  // Шаг 1: сбор свежих новостей через Google News RSS
-  const news = await fetchGoogleNewsRSS(marker.searchQuery, 8);
-  console.log(
-    `[analyzer] ${marker.id}: collected ${news.length} news items`,
-  );
+  const news = await fetchGoogleNewsRSS(marker.searchQuery, 12);
+  console.log(`[analyzer] ${marker.id}: collected ${news.length} news items`);
 
-  // Шаг 2: LLM-анализ на основе собранных новостей
-  // CURRENT_DATE передаётся дважды: в системной инструкции (buildSystemInstruction)
-  // и в пользовательском промпте — для надёжности, даже если модель игнорирует system.
+  if (news.length === 0) {
+    console.warn(`[analyzer] ${marker.id}: нет новостей — пропускаем LLM, возвращаем LOW-confidence заглушку`);
+    const fallback = getGroupFallbackScore(marker.group);
+    return {
+      probability: fallback,
+      trend: "FLAT",
+      confidence: "LOW",
+      rationaleEn:
+        `No recent news found for this marker via Google News RSS. ` +
+        `A neutral low-confidence estimate (${fallback > 0 ? "+" : ""}${fallback}) is applied based on the marker's group baseline; ` +
+        `this marker carries reduced weight in today's aggregate.`,
+      keyFacts: [],
+    };
+  }
+
   const userInput = `CURRENT_DATE: ${todayStr}
 MARKER_ID: ${marker.id}
 WEIGHT: ${marker.weight}
+GROUP: ${marker.group}
 MARKER_LOGIC: ${marker.logic}
 
 ${formatNewsData(news)}
 
-QUESTION: Based on the news data above, estimate the probability of peace in Ukraine within the next ${HORIZON_DAYS} days (horizon: ${todayStr} → ${addDaysStr(todayStr, HORIZON_DAYS)}), considering this marker's logic. Long-term structural signals (multi-year insurance, IMF reviews, reconstruction laws) indicate market expectation of durable peace and raise the probability; active combat and mobilization lower it.
+QUESTION: Based on the news data above, estimate the Peace/Escalation score (from -100 to +100) for Ukraine within the next ${HORIZON_DAYS} days (horizon: ${todayStr} → ${addDaysStr(todayStr, HORIZON_DAYS)}), considering this marker's logic and group.
+
+SCORING GUIDANCE:
+- Finance/Law markers: Multi-year investments, insurance, privatization, concessions → +50 to +100
+- Escalation markers: Mobilization, nuclear threats, infrastructure strikes → -50 to -100
+- Military markers: Frontline stability → +20 to +40; major advances → -30 to -60
+- Russia markers: Negotiation readiness → +30 to +50; mobilization → -30 to -50
+- Politics markers: Concrete peace plans → +15 to +30; vague statements → ±5
 
 When checking freshness: compare each news date to CURRENT_DATE (${todayStr}). News older than ${addDaysStr(todayStr, -STALE_THRESHOLD_DAYS)} is stale.
 
@@ -135,10 +168,10 @@ In "key_facts", you MUST include URLs from the INPUT_DATA above to verify claims
 
 Return JSON only with this schema:
 {
-  "probability": <int 0-100>,
+  "probability": <int between -100 and 100>,
   "trend": "<UP|DOWN|FLAT>",
   "confidence": "<HIGH|MEDIUM|LOW>",
-  "rationale_en": "<2-3 sentences explaining the logic, referencing specific recent events>",
+  "rationale_en": "<2-3 sentences explaining the logic, referencing specific recent events and numerical score>",
   "key_facts": [{"fact": "...", "url": "..."}]
 }`;
 
@@ -147,12 +180,12 @@ Return JSON only with this schema:
     raw = await llmComplete(buildSystemInstruction(todayStr), userInput);
   } catch (err) {
     console.error(`[analyzer] LLM call failed for ${marker.id}:`, err);
+    const fallback = getGroupFallbackScore(marker.group);
     return {
-      probability: 30,
+      probability: fallback,
       trend: "FLAT",
       confidence: "LOW",
-      rationaleEn:
-        "Analysis unavailable due to a model error. Neutral low-confidence estimate applied as fallback.",
+      rationaleEn: `Analysis unavailable due to a model error. Fallback estimate (${fallback > 0 ? "+" : ""}${fallback}) applied based on marker group baseline.`,
       keyFacts: [],
     };
   }
@@ -168,34 +201,32 @@ Return JSON only with this schema:
     parsed = extractJson(raw) as typeof parsed;
   } catch {
     console.error(`[analyzer] JSON parse failed for ${marker.id}:`, raw.slice(0, 300));
+    const fallback = getGroupFallbackScore(marker.group);
     return {
-      probability: 30,
+      probability: fallback,
       trend: "FLAT",
       confidence: "LOW",
-      rationaleEn: "The model returned a non-JSON response; neutral estimate applied.",
+      rationaleEn: "The model returned a non-JSON response; fallback estimate applied.",
       keyFacts: [],
     };
   }
 
-  // Confidence: если новостей мало или нет — понижаем
   const newsCount = news.length;
   let enforcedConfidence: Confidence;
   const modelConf = (parsed.confidence ?? "MEDIUM").toUpperCase();
-  if (newsCount >= 5) {
+  if (newsCount >= 8) {
     enforcedConfidence = modelConf === "HIGH" || modelConf === "LOW" ? (modelConf as Confidence) : "MEDIUM";
-  } else if (newsCount >= 2) {
+  } else if (newsCount >= 3) {
     enforcedConfidence = modelConf === "LOW" ? "LOW" : "MEDIUM";
   } else {
     enforcedConfidence = "LOW";
   }
 
-  // Антигаллюцинации: фильтруем key_facts, оставляя только URL из RSS-новостей
   const allowedUrls = new Set(news.map((n) => n.url));
   let keyFacts: KeyFact[] = (parsed.key_facts ?? [])
     .filter((f) => f.fact && f.url && allowedUrls.has(f.url))
     .map((f) => ({ fact: f.fact!, url: f.url! }));
 
-  // Если key_facts пустой, но есть новости — используем их как факты
   if (keyFacts.length === 0 && news.length > 0) {
     keyFacts = news.slice(0, 5).map((n) => ({
       fact: n.title,
@@ -208,17 +239,14 @@ Return JSON only with this schema:
     : "FLAT") as Trend;
 
   return {
-    probability: clamp(Math.round(Number(parsed.probability) || 0)),
+    probability: clamp(Math.round(Number(parsed.probability) || 0), -100, 100),
     trend,
     confidence: enforcedConfidence,
-    rationaleEn:
-      parsed.rationale_en?.trim() ||
-      "No rationale provided by the model.",
+    rationaleEn: parsed.rationale_en?.trim() || "No rationale provided by the model.",
     keyFacts,
   };
 }
 
-/// Агрегация всех оценок за сегодня с freshness-штрафом (детерминированная).
 export async function calculateAggregate(
   scores: {
     markerId: string;
@@ -232,7 +260,6 @@ export async function calculateAggregate(
     return { totalProbability: 0, summaryEn: "No marker data available." };
   }
 
-  // 1. Взвешенное среднее
   let weightedSum = 0;
   let weightSum = 0;
   for (const s of scores) {
@@ -241,48 +268,61 @@ export async function calculateAggregate(
   }
   let total = weightSum > 0 ? weightedSum / weightSum : 0;
 
-  // 2. Freshness penalty: если маркер с весом > 7 имеет LOW confidence — -5% (each)
+  // Симметричный штраф за LOW-confidence: тянет к 0 (нейтралитет)
   const heavyLow = scores.filter(
-    (s) => s.weight > 7 && s.confidence === "LOW",
+    (s) => s.weight > 8 && s.confidence === "LOW",
   ).length;
-  total = total - heavyLow * 5;
 
-  total = clamp(Math.round(total));
+  const penalty = heavyLow * 4; // Уменьшили с 5 до 4, т.к. больше маркеров
+  if (total > 0) {
+    total = Math.max(0, total - penalty);
+  } else if (total < 0) {
+    total = Math.min(0, total + penalty);
+  }
 
-  // 3. LLM пишет executive summary на основе детерминированного числа
+  total = clamp(Math.round(total), -100, 100);
+
   const todayStr = fmtDateISO(startOfTodayUTC());
   const markersBrief = scores
     .map(
       (s) =>
-        `{"id":"${s.markerId}","weight":${s.weight},"probability":${s.probability},"confidence":"${s.confidence}","rationale":"${s.rationaleEn.replace(/"/g, "'").slice(0, 160)}"}`,
+        `{"id":"${s.markerId}","weight":${s.weight},"score":${s.probability},"confidence":"${s.confidence}","rationale":"${s.rationaleEn.replace(/"/g, "'").slice(0, 140)}"}`,
     )
     .join(",\n");
 
-  const aggPrompt = `You are the Aggregator for the Peace Index 180. Today is ${todayStr}. The weighted-average probability has been computed deterministically as ${total}% (after a freshness penalty of ${heavyLow * 5}% from ${heavyLow} heavy stale markers).
+  const aggPrompt = `You are the Aggregator for the Peace Index 180. Today is ${todayStr}. The final score stands deterministically at ${total}% (on a scale from -100% max escalation to +100% durable peace, where 0% is deadlock).
 
 markers = [
 ${markersBrief}
 ]
 
-Write an executive summary (exactly 3 sentences, in English) explaining WHY the probability is ${total}% — name the 2-3 most influential markers and their direction. Be concrete and neutral. Do not include the JSON, just the prose summary.`;
+Write an executive summary (exactly 3 sentences, in English) explaining WHY the index stands at ${total}% — name the 2-3 most influential positive or negative drivers. Use concrete examples from the markers' rationales.
+
+INTERPRETATION GUIDE:
+• +80 to +100: "Durable peace is becoming highly probable"
+• +40 to +79: "Peace tendency is strengthening"
+• -39 to +39: "Deadlock / frozen conflict persists"
+• -40 to -79: "Escalation risks are rising"
+• -80 to -100: "Severe escalation is imminent"
+
+Be concrete, neutral, and data-driven. Do not include the JSON, just the prose summary.`;
 
   let summaryEn = "";
   try {
     summaryEn = (
       await llmComplete(
-        `You write concise, neutral executive summaries for a peace-probability index. Today's date: ${todayStr}.`,
+        `You write concise, neutral executive summaries for a peace/escalation index. Today's date: ${todayStr}. Scale: -100 (war) to +100 (peace).`,
         aggPrompt,
       )
     ).trim();
   } catch (err) {
     console.error("[analyzer] aggregate summary failed:", err);
-    summaryEn = `Weighted average across ${scores.length} markers yields ${total}% probability of peace within 180 days from ${todayStr}.`;
+    summaryEn = `Weighted average across ${scores.length} markers yields an index score of ${total}% (range -100% war to +100% peace) as of ${todayStr}.`;
   }
 
   return { totalProbability: total, summaryEn };
 }
 
-/// Сохраняет оценку маркера в БД (upsert по calcDate+markerId).
 export async function saveMarkerScore(
   calcDate: Date,
   marker: MarkerDef,
@@ -312,12 +352,11 @@ export async function saveMarkerScore(
       rationaleEn: analysis.rationaleEn,
       keyFactsJson: JSON.stringify(analysis.keyFacts),
       weight: marker.weight,
-      rationaleRu: null, // сбрасываем кэш перевода при пересчёте
+      rationaleRu: null,
     },
   });
 }
 
-/// Сохраняет агрегат в БД.
 export async function saveAggregate(
   calcDate: Date,
   result: AggregateResult,
@@ -347,15 +386,14 @@ export interface RunProgress {
   total: number;
 }
 
-/// Полный пересчёт: анализ 17 маркеров (с Google Search) → агрегация → сохранение.
-/// Фаза отдельного сбора данных убрана — теперь Gemini ищет и анализирует
-/// одним вызовом (grounding), что надёжнее и быстрее.
 export async function runFullAnalysis(
   onProgress?: (p: RunProgress) => void,
 ): Promise<AggregateResult> {
   const calcDate = startOfTodayUTC();
 
-  // Анализ каждого маркера (включая поиск через Google)
+  // Сортируем маркеры: сначала высоковесные (finance, law, escalation), потом остальные
+  const sortedMarkers = [...MARKERS].sort((a, b) => b.weight - a.weight);
+
   const scores: {
     markerId: string;
     probability: number;
@@ -364,13 +402,13 @@ export async function runFullAnalysis(
     rationaleEn: string;
   }[] = [];
 
-  for (let i = 0; i < MARKERS.length; i++) {
-    const m = MARKERS[i];
+  for (let i = 0; i < sortedMarkers.length; i++) {
+    const m = sortedMarkers[i];
     onProgress?.({
       phase: "analyzing",
       current: `${m.code} · ${m.name}`,
       idx: i,
-      total: MARKERS.length,
+      total: sortedMarkers.length,
     });
 
     const analysis = await analyzeMarker(m);
@@ -384,16 +422,14 @@ export async function runFullAnalysis(
       rationaleEn: analysis.rationaleEn,
     });
 
-    // Пауза между LLM-вызовами (уважение к rate-limit)
-    await sleep(500);
+    await sleep(5000);
   }
 
-  // Фаза 3: агрегация
   onProgress?.({
     phase: "aggregating",
     current: "Aggregating final index",
-    idx: MARKERS.length,
-    total: MARKERS.length,
+    idx: sortedMarkers.length,
+    total: sortedMarkers.length,
   });
   const aggregate = await calculateAggregate(scores);
   await saveAggregate(calcDate, aggregate, scores.length);
@@ -401,14 +437,13 @@ export async function runFullAnalysis(
   onProgress?.({
     phase: "done",
     current: "Complete",
-    idx: MARKERS.length,
-    total: MARKERS.length,
+    idx: sortedMarkers.length,
+    total: sortedMarkers.length,
   });
 
   return aggregate;
 }
 
-/// Перевод текста на русский через LLM (для rationale / summary).
 export async function translateToRussian(text: string): Promise<string> {
   const result = await llmComplete(
     "You are a professional translator. Translate the user's text into natural, accurate Russian. Preserve meaning, neutrality, and any URLs. Return ONLY the translation, no commentary.",
@@ -423,11 +458,8 @@ export function startOfTodayUTC(): Date {
   return d;
 }
 
-/// Пересчитывает used-вес для отображения (с учётом штрафов не применяется —
-/// это только информативная функция).
 export function totalWeightOf(markers: MarkerDef[]): number {
   return markers.reduce((s, m) => s + m.weight, 0);
 }
 
 export { MARKER_MAP, TOTAL_WEIGHT };
-

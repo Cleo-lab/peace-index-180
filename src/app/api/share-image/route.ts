@@ -1,8 +1,7 @@
-// app/api/share-image/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createCanvas } from "@napi-rs/canvas";
+import satori from "satori";
 
-export const runtime = "nodejs";
+export const runtime = "edge"; // Edge runtime — быстрее и дешевле
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -10,88 +9,164 @@ export async function GET(request: NextRequest) {
   const date = searchParams.get("d") || new Date().toISOString().slice(0, 10);
   const label = searchParams.get("l") || "Стагнация";
 
-  const canvas = createCanvas(1200, 630);
-  const ctx = canvas.getContext("2d");
+  // Определяем цвет по значению
+  let color = "#737373"; // stalemate (gray)
+  if (value <= -60) color = "#dc2626";      // war (red)
+  else if (value <= -20) color = "#f97316"; // escalation (orange)
+  else if (value < 20) color = "#737373";   // stalemate
+  else if (value < 60) color = "#f59e0b";   // peace tendency (amber)
+  else color = "#10b981";                   // high peace (emerald)
 
-  // Фон
-  ctx.fillStyle = "#0a0a0a";
-  ctx.fillRect(0, 0, 1200, 630);
+  const formatted = value > 0 ? `+${value}%` : `${value}%`;
 
-  // Цвет по значению
-  const colors: Record<string, string> = {
-    war: "#dc2626",
-    escalation: "#f97316", 
-    stalemate: "#737373",
-    peace_tendency: "#f59e0b",
-    high_peace: "#10b981",
-  };
-  
-  // Определяем цвет
-  let tier = "stalemate";
-  if (value <= -60) tier = "war";
-  else if (value <= -20) tier = "escalation";
-  else if (value < 20) tier = "stalemate";
-  else if (value < 60) tier = "peace_tendency";
-  else tier = "high_peace";
-  
-  const color = colors[tier];
+  // Загружаем шрифт (Inter или системный)
+  const fontData = await fetch(
+    "https://github.com/rsms/inter/raw/refs/heads/main/docs/font-files/InterDisplay-Bold.woff"
+  ).then((res) => res.arrayBuffer());
 
-  // Градиент
-  const grad = ctx.createRadialGradient(600, 250, 0, 600, 250, 500);
-  grad.addColorStop(0, color + "20");
-  grad.addColorStop(1, "transparent");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 1200, 630);
+  const svg = await satori(
+    <div
+      style={{
+        width: "1200px",
+        height: "630px",
+        background: "#0a0a0a",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "relative",
+        fontFamily: "Inter, system-ui, sans-serif",
+      }}
+    >
+      {/* Градиентное свечение */}
+      <div
+        style={{
+          position: "absolute",
+          width: "800px",
+          height: "800px",
+          borderRadius: "400px",
+          background: `radial-gradient(circle, ${color}20 0%, transparent 70%)`,
+          top: "-100px",
+        }}
+      />
 
-  // Заголовок
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 42px system-ui";
-  ctx.textAlign = "center";
-  ctx.fillText("ИНДЕКС МИРА 180", 600, 80);
+      {/* Заголовок */}
+      <div
+        style={{
+          color: "#ffffff",
+          fontSize: "42px",
+          fontWeight: 700,
+          letterSpacing: "0.1em",
+          marginBottom: "16px",
+        }}
+      >
+        ИНДЕКС МИРА 180
+      </div>
 
-  // Дата
-  ctx.fillStyle = "#888888";
-  ctx.font = "24px system-ui";
-  ctx.fillText(
-    new Date(date).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" }),
-    600, 120
+      {/* Дата */}
+      <div
+        style={{
+          color: "#888888",
+          fontSize: "24px",
+          marginBottom: "40px",
+        }}
+      >
+        {new Date(date).toLocaleDateString("ru-RU", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        })}
+      </div>
+
+      {/* Большое значение */}
+      <div
+        style={{
+          color: color,
+          fontSize: "180px",
+          fontWeight: 700,
+          lineHeight: 1,
+        }}
+      >
+        {formatted}
+      </div>
+
+      {/* Подпись */}
+      <div
+        style={{
+          color: "#ffffff",
+          fontSize: "48px",
+          marginTop: "24px",
+        }}
+      >
+        {label}
+      </div>
+
+      {/* Линия */}
+      <div
+        style={{
+          width: "600px",
+          height: "4px",
+          background: `${color}40`,
+          marginTop: "40px",
+          borderRadius: "2px",
+        }}
+      />
+
+      {/* Описание */}
+      <div
+        style={{
+          color: "#aaaaaa",
+          fontSize: "22px",
+          marginTop: "24px",
+          textAlign: "center",
+        }}
+      >
+        Оценка вероятности мира в Украине за 180 дней
+      </div>
+
+      {/* URL */}
+      <div
+        style={{
+          color: "#666666",
+          fontSize: "20px",
+          marginTop: "60px",
+        }}
+      >
+        peace-index-180.vercel.app
+      </div>
+    </div>,
+    {
+      width: 1200,
+      height: 630,
+      fonts: [
+        {
+          name: "Inter",
+          data: fontData,
+          weight: 700,
+          style: "normal",
+        },
+      ],
+    }
   );
 
-  // Значение
-  ctx.fillStyle = color;
-  ctx.font = "bold 180px system-ui";
-  const formatted = value > 0 ? `+${value}%` : `${value}%`;
-  ctx.fillText(formatted, 600, 340);
-
-  // Подпись
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "48px system-ui";
-  ctx.fillText(label, 600, 420);
-
-  // Линия
-  ctx.strokeStyle = color + "40";
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(300, 460);
-  ctx.lineTo(900, 460);
-  ctx.stroke();
-
-  // Описание
-  ctx.fillStyle = "#aaaaaa";
-  ctx.font = "22px system-ui";
-  ctx.fillText("Оценка вероятности мира в Украине за 180 дней", 600, 510);
-
-  // URL
-  ctx.fillStyle = "#666666";
-  ctx.font = "20px system-ui";
-  ctx.fillText("peace-index-180.vercel.app", 600, 580);
-
-  const buffer = canvas.toBuffer("image/png");
+  // Конвертируем SVG в PNG через @resvg/resvg-wasm (чистый WASM, без нативных модулей)
+  const { Resvg } = await import("@resvg/resvg-wasm");
   
-  return new NextResponse(buffer, {
+  // Инициализируем WASM один раз (кэшируется в Edge runtime)
+  const wasmResponse = await fetch("https://unpkg.com/@resvg/resvg-wasm@2.6.2/index_bg.wasm");
+  const wasmArrayBuffer = await wasmResponse.arrayBuffer();
+  await Resvg.init(wasmArrayBuffer);
+
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: "width", value: 1200 },
+  });
+  
+  const pngBuffer = resvg.render().asPng();
+
+  return new NextResponse(pngBuffer, {
     headers: {
       "Content-Type": "image/png",
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": "public, max-age=3600, s-maxage=3600",
     },
   });
 }

@@ -122,6 +122,27 @@ function getGroupFallbackScore(group: string): number {
       return 0;
   }
 }
+// В analyzer.ts — добавить функцию очистки:
+
+function cleanRationale(text: string): string {
+  // Если текст содержит JSON-подобную структуру — вытаскиваем только rationale_en
+  if (text.includes('"rationale_en"')) {
+    try {
+      const match = text.match(/"rationale_en"\s*:\s*"([^"]+)"/);
+      if (match) return match[1].replace(/\\"/g, '"');
+    } catch {
+      // fallback
+    }
+  }
+  
+  // Удаляем остатки JSON-структуры
+  return text
+    .replace(/\{[\s\S]*"rationale_en"\s*:\s*"/, '')
+    .replace(/"[\s\S]*\}/, '')
+    .replace(/"key_facts"[\s\S]*/g, '')
+    .replace(/\\"/g, '"')
+    .trim();
+}
 
 export async function analyzeMarker(marker: MarkerDef): Promise<MarkerAnalysis> {
   const today = startOfTodayUTC();
@@ -432,6 +453,8 @@ export async function runFullAnalysis(
     total: sortedMarkers.length,
   });
   const aggregate = await calculateAggregate(scores);
+  // В calculateAggregate, перед сохранением:
+  summaryEn = cleanRationale(summaryEn);
   await saveAggregate(calcDate, aggregate, scores.length);
 
   onProgress?.({

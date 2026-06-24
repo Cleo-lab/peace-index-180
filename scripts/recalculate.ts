@@ -82,13 +82,13 @@ async function executeRecalculation(force = false): Promise<void> {
   const today = startOfTodayUTC();
   log("info", `Starting recalculation for ${today.toISOString().slice(0, 10)}...`);
   
-  if (!force) {
-    const exists = await checkExistingCalculation();
-    if (exists) {
-      log("info", "Skipping: calculation already exists. Use --force to override.");
-      return;
-    }
-  }
+  //if (!force) {
+  //  const exists = await checkExistingCalculation();
+  //  if (exists) {
+  //    log("info", "Skipping: calculation already exists. Use --force to override.");
+  //    return;
+  //  }
+  //}
   
   let lastError: Error | null = null;
   

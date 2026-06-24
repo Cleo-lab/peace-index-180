@@ -1,17 +1,21 @@
-// app/widget/page.tsx — финальная версия
+// app/widget/page.tsx
 "use client";
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { SpeedometerGauge } from "@/components/peace/speedometer-gauge";
-import { probabilityColor, probabilityLabelRu } from "@/lib/colors";
+import { SpeedometerGauge, type SegmentDef } from "@/components/peace/speedometer-gauge";
+import { probabilityLabelRu } from "@/lib/colors";
 import { ArrowUpRight, Share2, X } from "lucide-react";
+
+// Тот же порядок групп, что и на основной странице
+const GROUP_ORDER = ["finance", "law", "escalation", "ukraine_military", "russia", "politics"] as const;
 
 interface WidgetData {
   totalProbability: number;
   summaryEn: string;
   summaryRu: string | null;
   calcDate: string;
+  segments: SegmentDef[];
 }
 
 export default function WidgetPage() {
@@ -22,14 +26,53 @@ export default function WidgetPage() {
     fetch("/api/status", { cache: "no-store" })
       .then((r) => r.json())
       .then((s) => {
-        if (s.aggregate) {
-          setData({
-            totalProbability: s.aggregate.totalProbability,
-            summaryEn: s.aggregate.summaryEn,
-            summaryRu: s.aggregate.summaryRu,
-            calcDate: s.calcDate,
-          });
+        if (!s.aggregate) return;
+
+        // Формируем segments точно так же, как на основной странице (page.tsx)
+        const markers = s.markers ?? [];
+        const groups = s.groups ?? [];
+        const calcDate = s.calcDate ?? "";
+
+        const map: Record<string, any[]> = {};
+        for (const m of markers) (map[m.group] ??= []).push(m);
+
+        const rows = GROUP_ORDER.map((key) => {
+          const list = map[key] ?? [];
+          const weight = list.reduce((sum: number, m: any) => sum + m.weight, 0);
+          const wp = list.reduce((sum: number, m: any) => sum + m.weight * m.probability, 0);
+          const avg = weight > 0 ? wp / weight : 0;
+          const meta = groups.find((g: any) => g.key === key);
+          return {
+            key,
+            labelRu: meta?.labelRu ?? key,
+            avg,
+            weight,
+            count: list.length,
+            contribution: 0,
+            markers: list,
+            calcDate,
+          };
+        }).filter((g) => g.count > 0);
+
+        const totalWeight = rows.reduce((sum, g) => sum + g.weight, 0);
+        for (const r of rows) {
+          r.contribution = totalWeight > 0 ? (r.weight / totalWeight) * r.avg : 0;
         }
+
+        const segments: SegmentDef[] = rows.map((r) => ({
+          groupKey: r.key,
+          label: r.labelRu,
+          contribution: r.contribution,
+          avgProbability: r.avg,
+        }));
+
+        setData({
+          totalProbability: s.aggregate.totalProbability,
+          summaryEn: s.aggregate.summaryEn,
+          summaryRu: s.aggregate.summaryRu,
+          calcDate: s.calcDate,
+          segments,
+        });
       });
   }, []);
 
@@ -41,38 +84,16 @@ export default function WidgetPage() {
     );
   }
 
-  const color = probabilityColor(data.totalProbability);
-  const formatted =
-    data.totalProbability > 0
-      ? `+${data.totalProbability}%`
-      : `${data.totalProbability}%`;
-
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-black px-4">
-      {/* Спидометр — компактный */}
-      <div className="w-full max-w-[280px]">
+      <div className="w-full max-w-[320px]">
         <SpeedometerGauge
           value={data.totalProbability}
-          segments={[]}
-          mode="circular"
-          className="scale-75"
+          segments={data.segments}
+          dark={true}
         />
       </div>
 
-      {/* Значение */}
-      <div className="mt-2 text-center">
-        <div className="text-5xl font-bold tabular-nums" style={{ color }}>
-          {formatted}
-        </div>
-        <div className="mt-1 text-sm text-white/60">
-          {probabilityLabelRu(data.totalProbability)}
-        </div>
-        <div className="mt-0.5 text-[11px] text-white/40">
-          {new Date(data.calcDate).toLocaleDateString("ru-RU")}
-        </div>
-      </div>
-
-      {/* Кнопки */}
       <div className="mt-6 flex gap-3">
         <button
           onClick={() => setShowRationale(true)}
@@ -80,11 +101,9 @@ export default function WidgetPage() {
         >
           Обоснование
         </button>
-
         <ShareButton value={data.totalProbability} calcDate={data.calcDate} />
       </div>
 
-      {/* Модаль с обоснованием */}
       {showRationale && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -97,14 +116,10 @@ export default function WidgetPage() {
           >
             <X className="h-6 w-6" />
           </button>
-
-          <h3 className="mt-8 text-lg font-semibold text-white">
-            Обоснование оценки
-          </h3>
+          <h3 className="mt-8 text-lg font-semibold text-white">Обоснование оценки</h3>
           <p className="mt-4 flex-1 overflow-y-auto text-sm leading-relaxed text-white/80">
             {data.summaryRu || data.summaryEn}
           </p>
-
           <a
             href="https://peace-index-180.vercel.app/"
             target="_blank"
@@ -120,25 +135,17 @@ export default function WidgetPage() {
   );
 }
 
-function ShareButton({
-  value,
-  calcDate,
-}: {
-  value: number;
-  calcDate: string;
-}) {
+// ShareButton остаётся без изменений...
+function ShareButton({ value, calcDate }: { value: number; calcDate: string }) {
   const [sharing, setSharing] = React.useState(false);
 
   async function handleShare() {
     setSharing(true);
     try {
       const imageUrl = `https://peace-index-180.vercel.app/api/share-image?v=${value}&d=${calcDate}&l=${encodeURIComponent(probabilityLabelRu(value))}`;
-
       const response = await fetch(imageUrl);
       const blob = await response.blob();
-      const file = new File([blob], "peace-index-180.png", {
-        type: "image/png",
-      });
+      const file = new File([blob], "peace-index-180.png", { type: "image/png" });
 
       if (navigator.share && navigator.canShare({ files: [file] })) {
         await navigator.share({
@@ -148,7 +155,6 @@ function ShareButton({
           url: "https://peace-index-180.vercel.app/",
         });
       } else {
-        // Fallback: копируем ссылку
         await navigator.clipboard.writeText(
           `Индекс Мира 180: ${value > 0 ? "+" : ""}${value}% — ${probabilityLabelRu(value)}\nhttps://peace-index-180.vercel.app/`
         );

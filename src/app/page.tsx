@@ -24,7 +24,6 @@ import {
   Layers,
   BookOpen,
   AlertCircle,
-  RefreshCw,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
@@ -52,7 +51,8 @@ interface HistoryPoint {
   markerCount: number;
 }
 
-const GROUP_ORDER = ["finance", "law", "ukraine_military", "russia", "politics"] as const;
+// Обновлён порядок групп: добавлена escalation
+const GROUP_ORDER = ["finance", "law", "escalation", "ukraine_military", "russia", "politics"] as const;
 
 export default function Home() {
   const [status, setStatus] = React.useState<StatusResponse | null>(null);
@@ -116,7 +116,7 @@ export default function Home() {
   const groups = status?.groups ?? [];
   const calcDate = status?.calcDate ?? null;
   const job = status?.job ?? null;
-  const totalMarkers = status?.totalMarkers ?? 17;
+  const totalMarkers = status?.totalMarkers ?? 24; // Обновлено с 17 на 24
 
   // Группировка маркеров + вычисление вкладов
   const { groupRows, segments } = React.useMemo(() => {
@@ -129,25 +129,22 @@ export default function Home() {
       const wp = list.reduce((s, m) => s + m.weight * m.probability, 0);
       const avg = weight > 0 ? wp / weight : 0;
       const meta = groups.find((g) => g.key === key);
-      // Вклад группы в общую оценку = (вес группы / общий вес) × средняя вероятность группы
+      // Вклад группы = (вес группы / общий вес) × средняя оценка группы
       return {
         key,
         labelRu: meta?.labelRu ?? key,
         avg,
         weight,
         count: list.length,
-        contribution: 0, // заполним ниже после нормализации
+        contribution: 0,
         markers: list,
         calcDate: calcDate ?? "",
       };
     }).filter((g) => g.count > 0);
 
     const totalWeight = rows.reduce((s, g) => s + g.weight, 0);
-    // вклад = (weight_group / total_weight) * avg_group  (это и есть вклад в weighted average)
-    let contribSum = 0;
     for (const r of rows) {
       r.contribution = totalWeight > 0 ? (r.weight / totalWeight) * r.avg : 0;
-      contribSum += r.contribution;
     }
 
     const segs: SegmentDef[] = rows.map((r) => ({
@@ -224,7 +221,7 @@ export default function Home() {
           <Skeleton className="h-[420px] w-full rounded-3xl" />
         ) : hasData ? (
           <>
-            {/* HERO — спидометр с сегментами-вкладами */}
+            {/* HERO — дуговой спидометр с сегментами-вкладами */}
             <HeroSection
               totalProbability={aggregate!.totalProbability}
               summaryEn={aggregate!.summaryEn}
@@ -233,12 +230,11 @@ export default function Home() {
               markerCount={aggregate!.markerCount}
               totalMarkers={totalMarkers}
               job={job}
-              onRefresh={() => setTick((t) => t + 1)}
               refreshTick={tick}
               segments={segments}
             />
 
-            {/* Единый раздел: Структура индекса = обзор групп + маркеры внутри */}
+            {/* Структура индекса */}
             <motion.section
               initial={{ opacity: 0, y: 8 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -252,7 +248,7 @@ export default function Home() {
                     Структура индекса
                   </h2>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {markers.length} маркеров в 5 группах · кликните группу, чтобы
+                    {markers.length} маркеров в 6 группах · кликните группу, чтобы
                     раскрыть её маркеры
                   </p>
                 </div>
@@ -283,7 +279,7 @@ export default function Home() {
               <HistoryChart points={history} current={aggregate!.totalProbability} />
             </motion.section>
 
-            {/* Методология — свёрнута по умолчанию */}
+            {/* Методология */}
             <section>
               <Collapsible open={showMethodology} onOpenChange={setShowMethodology}>
                 <Card className="overflow-hidden">
@@ -296,7 +292,7 @@ export default function Home() {
                         <div>
                           <h3 className="text-sm font-semibold">Как считается индекс</h3>
                           <p className="text-xs text-muted-foreground">
-                            Методология, маркеры, антигаллюцинации и градиент давности
+                            Методология, маркеры, шкала -100..+100 и источники данных
                           </p>
                         </div>
                       </div>
@@ -319,15 +315,15 @@ export default function Home() {
                             <div className="grid gap-4 text-sm sm:grid-cols-2">
                               <MethodItem
                                 title="Горизонт прогноза"
-                                text="180 дней. «Мир» = прекращение огня, заморозка конфликта или мирный договор."
+                                text="180 дней. «Мир» = прекращение огня, заморозка конфликта или мирный договор. Шкала: -100 (война) → 0 (стагнация) → +100 (мир)."
                               />
                               <MethodItem
                                 title="Маркеры и веса"
-                                text="17 маркеров в 5 группах. Долгосрочные структурные (страхование, IFI) имеют максимальный вес."
+                                text="24 маркера в 6 группах. Финансовые и законодательные маркеры имеют максимальный вес (до 12). Политические — минимальный (до 3)."
                               />
                               <MethodItem
-                                title="Спидометр"
-                                text="Каждый цветной сегмент дуги = вклад группы в общую оценку: (вес группы ÷ общий вес) × средняя вероятность группы. Стрелка указывает на итог."
+                                title="Дуговой спидометр"
+                                text="Цветные сегменты = вклады групп маркеров. Левая сторона = факторы войны, правая = факторы мира. Длина сегмента ∝ вклад группы."
                               />
                               <MethodItem
                                 title="Антигаллюцинации"
@@ -335,11 +331,11 @@ export default function Home() {
                               />
                               <MethodItem
                                 title="Градиент давности"
-                                text="Если по маркеру нет данных >14 дней, уверенность падает до LOW, а для тяжёлых маркеров (вес >7) индекс штрафуется на 5%."
+                                text="Если по маркеру нет данных >14 дней, уверенность падает до LOW. Для тяжёлых маркеров (вес >8) индекс корректируется к нейтрали."
                               />
                               <MethodItem
                                 title="Источники данных"
-                                text="IMF, MIGA, DFC, EBRD, Kiel, ISW, ACLED, Oryx, Verkhovna Rada, Prozorro, Eur-Lex, Kremlin, Reuters/AP, OSINT."
+                                text="IMF, MIGA, DFC, EBRD, Kiel, ISW, ACLED, Oryx, Verkhovna Rada, Prozorro, Eur-Lex, Kremlin, Reuters/AP, OSINT, Google News RSS."
                               />
                             </div>
                           </div>
@@ -355,12 +351,11 @@ export default function Home() {
           <EmptyState
             running={job?.running ?? false}
             progress={job?.progress ?? null}
-            onRefresh={() => setTick((t) => t + 1)}
           />
         )}
       </main>
 
-      {/* Footer — единственный дисклеймер */}
+      {/* Footer */}
       <footer className="mt-auto border-t border-border/60 bg-card/50">
         <div className="mx-auto w-full max-w-6xl space-y-3 px-4 py-6 sm:px-6">
           <div className="flex items-start gap-2">
@@ -369,7 +364,7 @@ export default function Home() {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
             <span>Peace Index 180 · некоммерческий проект · open data + AI</span>
-            <span>горизонт 180 дней · пересчёт 1 раз в сутки</span>
+            <span>горизонт 180 дней · автообновление ежедневно в 02:00 UTC</span>
           </div>
         </div>
       </footer>
@@ -389,11 +384,9 @@ function MethodItem({ title, text }: { title: string; text: string }) {
 function EmptyState({
   running,
   progress,
-  onRefresh,
 }: {
   running: boolean;
   progress: HeroJobView["progress"];
-  onRefresh: () => void;
 }) {
   return (
     <Card className="mt-6 flex flex-col items-center justify-center p-12 text-center">
@@ -407,27 +400,20 @@ function EmptyState({
             {progress?.current ?? "Подготовка данных"}
           </p>
           <p className="mt-4 max-w-md text-xs text-muted-foreground">
-            Система анализирует 17 маркеров с помощью ИИ и Google Search,
-            и сводит оценки в единый индекс. Это занимает 2–3 минуты.
+            Система анализирует 24 маркера с помощью ИИ и Google News RSS.
+            Расчёт занимает 3–4 минуты. Данные обновляются автоматически каждые сутки.
           </p>
         </>
       ) : (
         <>
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40">
-            <RefreshCw className="h-8 w-8" />
+            <Activity className="h-8 w-8" />
           </div>
           <h3 className="mt-5 text-lg font-semibold">Данных пока нет</h3>
           <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            Нажмите кнопку ниже, чтобы собрать свежие данные по 17 маркерам и
-            рассчитать индекс мира на ближайшие 180 дней.
+            Первый расчёт выполняется автоматически по расписанию (02:00 UTC).
+            Пожалуйста, проверьте позже или запустите вручную через GitHub Actions.
           </p>
-          <Button
-            onClick={onRefresh}
-            className="mt-5 gap-2 rounded-full bg-emerald-600 text-white hover:bg-emerald-700"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Обновить данные
-          </Button>
         </>
       )}
     </Card>

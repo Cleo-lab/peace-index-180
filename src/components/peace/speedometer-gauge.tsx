@@ -2,65 +2,79 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { groupColor, probabilityColor, probabilityLabelRu } from "@/lib/colors";
 import { cn } from "@/lib/utils";
 
 export interface SegmentDef {
   groupKey: string;
   label: string;
-  /// Вклад группы в общую оценку, в процентных пунктах (-100..+100).
   contribution: number;
-  /// Средняя вероятность группы (для тултипа).
   avgProbability: number;
 }
 
 interface SpeedometerGaugeProps {
-  value: number; // итоговая оценка -100..+100
+  value: number; // -100..+100
   segments: SegmentDef[];
   className?: string;
-  /// Режим отображения: полукруг (классика) или полный круг (360°).
-  mode?: "semicircle" | "circular";
+  /** Тёмная тема (для виджета на чёрном фоне) */
+  dark?: boolean;
 }
 
-// ===== Геометрия =====
-const CX = 160;
-const CY = 160;
-const R = 108;
-const STROKE = 20;
-const VIEW_W = 320;
-const VIEW_H = 320;
+// ===== Цвета групп (fallback) =====
+const GROUP_COLORS: Record<string, string> = {
+  finance: "#10b981",
+  law: "#84cc16",
+  escalation: "#dc2626",
+  ukraine_military: "#e11d48",
+  russia: "#f97316",
+  politics: "#d946ef",
+};
 
-// Полукруг: 270° с зазором снизу. 0% → 225°, 50% → 0° (верх), 100% → 135°
-const SEMI_START_ANGLE = 225;
-const SEMI_SWEEP = 270;
+function groupColor(key: string): string {
+  try {
+    // @ts-expect-error
+    const { groupColor: imported } = require("@/lib/colors");
+    if (imported) return imported(key);
+  } catch {
+    // fallback
+  }
+  return GROUP_COLORS[key] || "#999";
+}
 
-// Круг: полный 360°. -100% → 0° (верх), 0% → 180° (низ), +100% → 360° (верх)
-const CIRC_START_ANGLE = 0;
-const CIRC_SWEEP = 360;
+// ===== Геометрия: дуга 270° с зазором 90° снизу =====
+// Система polar: 0° = верх (12:00), 90° = право (3:00), 180° = низ (6:00), 270° = лево (9:00)
+//
+// На рисунке:
+//   0    = верх (12:00)          → 0°   (или 360°)
+//   -100 = левый низ (~7:30)     → 225°
+//   +100 = правый низ (~4:30)    → 135°  но в arcPath идём по часовой: 225°→360°→495°(=135°+360°)
+//
+// Дуга по часовой: от 225° через 360°(верх) к 495°
+// Зазор снизу: от 135° до 225° (90°)
+
+const CX = 200;
+const CY = 200;
+const R = 140;
+const STROKE = 24;
+const VIEW_W = 400;
+const VIEW_H = 400;
+
+const ARC_START = 225;   // -100 (левый низ, ~7:30)
+const ARC_END = 495;     // +100 (правый низ, ~4:30) = 135° + 360°
+const ARC_MID = 360;     // 0 (верх, 12:00)
 
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
+  // 0° = верх, по часовой
   const rad = ((angleDeg - 90) * Math.PI) / 180;
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 }
 
-function valueToAngle(v: number, mode: "semicircle" | "circular"): number {
-  if (mode === "circular") {
-    // -100..+100 → 0°..360°
-    const normalized = Math.max(-100, Math.min(100, v));
-    return CIRC_START_ANGLE + ((normalized + 100) / 200) * CIRC_SWEEP;
-  }
-  // semicircle: 0..100 → 225°..135° (через 0° сверху)
-  const normalized = Math.max(0, Math.min(100, v));
-  return SEMI_START_ANGLE + (normalized / 100) * SEMI_SWEEP;
+function valueToAngle(v: number): number {
+  const normalized = Math.max(-100, Math.min(100, v));
+  // -100..+100 → 225°..495° (диапазон 270°)
+  return ARC_START + ((normalized + 100) / 200) * (ARC_END - ARC_START);
 }
 
-function arcPath(
-  cx: number,
-  cy: number,
-  r: number,
-  a1: number,
-  a2: number
-): string {
+function arcPath(cx: number, cy: number, r: number, a1: number, a2: number): string {
   const p1 = polar(cx, cy, r, a1);
   const p2 = polar(cx, cy, r, a2);
   const largeArc = Math.abs(a2 - a1) > 180 ? 1 : 0;
@@ -90,292 +104,283 @@ function useCountUp(target: number, duration = 1100) {
   return val;
 }
 
+function getTierLabel(value: number): string {
+  if (value <= -60) return "Война";
+  if (value <= -30) return "Эскалация";
+  if (value <= -10) return "Напряжение";
+  if (value <= 10) return "Стагнация";
+  if (value <= 30) return "Деэскалация";
+  if (value <= 60) return "Переговоры";
+  return "Мир";
+}
+
 export function SpeedometerGauge({
   value,
   segments,
   className,
-  mode = "semicircle",
+  dark = false,
 }: SpeedometerGaugeProps) {
-  const isCircular = mode === "circular";
-  const clampedValue = isCircular
-    ? Math.max(-100, Math.min(100, value))
-    : Math.max(0, Math.min(100, value));
-
+  const clampedValue = Math.max(-100, Math.min(100, value));
   const animatedValue = useCountUp(clampedValue);
   const displayValue = Math.round(animatedValue);
-  const totalColor = probabilityColor(clampedValue);
+  const formatted = displayValue > 0 ? `+${displayValue}` : `${displayValue}`;
+  const tierLabel = getTierLabel(displayValue);
 
-  // ===== Нормализация сегментов =====
-  // Для кругового режима: contribution может быть отрицательным.
-  // Суммируем абсолютные вклады для пропорций дуги.
-  const sumAbsContrib =
-    segments.reduce((s, x) => s + Math.abs(x.contribution), 0) || 1;
-  const normalized = segments.map((s) => ({
-    ...s,
-    scaled: (Math.abs(s.contribution) / sumAbsContrib) * 200, // 200 = полный круг в "условных %" для дуги
-  }));
+  // Цвета для тёмной/светлой темы
+  const trackColor = dark ? "rgba(255,255,255,0.15)" : "#e5e5e5";
+  const trackOpacity = dark ? 1 : 0.3;
+  const tickColor = dark ? "rgba(255,255,255,0.5)" : "#999";
+  const majorTickColor = dark ? "rgba(255,255,255,0.7)" : "#666";
+  const labelColor = dark ? "rgba(255,255,255,0.8)" : "#666";
+  const needleColor = dark ? "#e5e5e5" : "#1a1a2e";
+  const centerColor = dark ? "#fff" : "#1a1a2e";
+  const tierColor = dark ? "rgba(255,255,255,0.6)" : "#666";
 
-  // Кумулятивные границы сегментов (в градусах для кругового, в 0..100 для полукруга)
-  const { list: segmentBounds } = normalized.reduce(
-    (acc, s) => {
-      const start = acc.cursor;
-      const end = acc.cursor + s.scaled;
-      acc.cursor = end;
-      acc.list.push({ ...s, start, end });
-      return acc;
-    },
-    {
-      cursor: isCircular ? 0 : 0,
-      list: [] as Array<
-        (typeof normalized)[number] & { start: number; end: number }
-      >,
+  // ===== Разделяем сегменты =====
+  const positiveSegments = segments.filter((s) => s.contribution > 0);
+  const negativeSegments = segments.filter((s) => s.contribution < 0);
+
+  const totalPositive = positiveSegments.reduce((s, x) => s + x.contribution, 0);
+  const totalNegative = Math.abs(negativeSegments.reduce((s, x) => s + x.contribution, 0));
+  const totalAbs = totalPositive + totalNegative;
+
+  // ===== Формируем цветные сегменты дуги =====
+  // Левая сторона (-100..0): от 225° до 360° (135° диапазон)
+  const leftSegments: Array<{ start: number; end: number; color: string; label: string }> = [];
+  if (totalNegative > 0) {
+    let cursor = ARC_MID; // 360° (верх, 0)
+    for (const seg of negativeSegments) {
+      const portion = Math.abs(seg.contribution) / totalNegative;
+      const angleSpan = portion * 135; // 135° = левая половина дуги
+      const end = cursor - angleSpan;
+      leftSegments.push({
+        start: Math.max(end, ARC_START),
+        end: cursor,
+        color: groupColor(seg.groupKey),
+        label: seg.label,
+      });
+      cursor = end;
     }
-  );
+  }
+
+  // Правая сторона (0..+100): от 360° до 495° (135° диапазон)
+  const rightSegments: Array<{ start: number; end: number; color: string; label: string }> = [];
+  if (totalPositive > 0) {
+    let cursor = ARC_MID; // 360° (верх, 0)
+    for (const seg of positiveSegments) {
+      const portion = seg.contribution / totalPositive;
+      const angleSpan = portion * 135; // 135° = правая половина дуги
+      const end = cursor + angleSpan;
+      rightSegments.push({
+        start: cursor,
+        end: Math.min(end, ARC_END),
+        color: groupColor(seg.groupKey),
+        label: seg.label,
+      });
+      cursor = end;
+    }
+  }
 
   // ===== Стрелка =====
-  const needleAngle = valueToAngle(animatedValue, mode);
-  const needleLen = R - STROKE - 14;
+  const needleAngle = valueToAngle(animatedValue);
+  const needleLen = R - STROKE - 10;
   const needleEnd = polar(CX, CY, needleLen, needleAngle);
-  const needleBase1 = polar(CX, CY, 9, needleAngle + 90);
-  const needleBase2 = polar(CX, CY, 9, needleAngle - 90);
+  const needleBase1 = polar(CX, CY, 8, needleAngle + 90);
+  const needleBase2 = polar(CX, CY, 8, needleAngle - 90);
 
   // ===== Тики и метки =====
-  const circTicks = [-100, -75, -50, -25, 0, 25, 50, 75, 100];
-  const circMajorTicks = [-100, -50, 0, 50, 100];
-  const semiTicks = [0, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100];
-  const semiMajorTicks = [0, 25, 50, 75, 100];
-
-  const allTicks = isCircular ? circTicks : semiTicks;
-  const majorTicks = isCircular ? circMajorTicks : semiMajorTicks;
-
-  // ===== viewBox =====
-  const viewBox = isCircular
-    ? `0 0 ${VIEW_W} ${VIEW_H}`
-    : "0 -12 320 292";
-
-  // ===== Подпись центра =====
-  const centerLabel = isCircular ? "динамика мира/войны" : "вероятность мира";
-  const formattedDisplay = isCircular
-    ? `${displayValue > 0 ? "+" : ""}${displayValue}`
-    : `${displayValue}`;
+  const majorTicks = [-100, -75, -50, -25, 0, 25, 50, 75, 100];
+  const minorTicks: number[] = [];
+  for (let t = -95; t <= 95; t += 5) {
+    if (!majorTicks.includes(t)) minorTicks.push(t);
+  }
 
   return (
     <div className={cn("flex flex-col items-center", className)}>
-      <div className="relative w-full max-w-[360px]">
+      <div className="relative w-full max-w-[400px]">
         <svg
-          viewBox={viewBox}
+          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
           className="w-full"
           role="img"
-          aria-label={
-            isCircular
-              ? `Круговой индикатор мира/войны: ${clampedValue}%. Цветные сегменты показывают вклад групп маркеров.`
-              : `Спидометр вероятности мира: ${clampedValue} процентов. Цветные сегменты показывают вклад групп маркеров.`
-          }
+          aria-label={`Индекс мира: ${displayValue}%`}
         >
-          {/* Фоновая дорожка */}
-          {isCircular ? (
-            // Полный круг — фоновая окружность
-            <circle
-              cx={CX}
-              cy={CY}
-              r={R}
+          {/* Фоновая дуга */}
+          <path
+            d={arcPath(CX, CY, R, ARC_START, ARC_END)}
+            fill="none"
+            stroke={trackColor}
+            strokeWidth={STROKE}
+            strokeLinecap="butt"
+            opacity={trackOpacity}
+          />
+
+          {/* Левая сторона: отрицательные сегменты (-100..0) */}
+          {leftSegments.map((seg, i) => (
+            <motion.path
+              key={`left-${i}`}
+              d={arcPath(CX, CY, R, seg.start, seg.end)}
               fill="none"
-              stroke="currentColor"
-              strokeWidth={STROKE}
-              className="text-muted-foreground"
-              opacity={0.12}
-            />
-          ) : (
-            // Полукруг — дуга
-            <path
-              d={arcPath(CX, CY, R, SEMI_START_ANGLE, SEMI_START_ANGLE + SEMI_SWEEP)}
-              fill="none"
-              stroke="currentColor"
+              stroke={seg.color}
               strokeWidth={STROKE}
               strokeLinecap="butt"
-              className="text-muted-foreground"
-              opacity={0.18}
-            />
-          )}
+              initial={{ pathLength: 0, opacity: 0 }}
+              animate={{ pathLength: 1, opacity: 1 }}
+              transition={{ duration: 0.6, delay: 0.1 + i * 0.08 }}
+            >
+              <title>{seg.label}</title>
+            </motion.path>
+          ))}
 
-          {/* Цветные сегменты-вклады */}
-          {segmentBounds.map((seg, i) => {
-            if (seg.end - seg.start < 0.5) return null;
-            const color = groupColor(seg.groupKey);
+          {/* Правая сторона: положительные сегменты (0..+100) */}
+          {rightSegments.map((seg, i) => (
+            <motion.path
+              key={`right-${i}`}
+              d={arcPath(CX, CY, R, seg.start, seg.end)}
+              fill="none"
+              stroke={seg.color}
+              strokeWidth={STROKE}
+              strokeLinecap="butt"
+              initial={{ pathLength: 0, opacity: 0 }}
+              animate={{ pathLength: 1, opacity: 1 }}
+              transition={{ duration: 0.6, delay: 0.1 + i * 0.08 }}
+            >
+              <title>{seg.label}</title>
+            </motion.path>
+          ))}
 
-            let d: string;
-            if (isCircular) {
-              // Круговой: start/end в градусах
-              d = arcPath(CX, CY, R, seg.start, seg.end);
-            } else {
-              // Полукруг: start/end в 0..100
-              const a1 = SEMI_START_ANGLE + (seg.start / 100) * SEMI_SWEEP;
-              const a2 = SEMI_START_ANGLE + (seg.end / 100) * SEMI_SWEEP;
-              d = arcPath(CX, CY, R, a1, a2);
-            }
-
-            return (
-              <motion.path
-                key={seg.groupKey}
-                d={d}
-                fill="none"
-                stroke={color}
-                strokeWidth={STROKE}
-                strokeLinecap="butt"
-                initial={{ pathLength: 0, opacity: 0 }}
-                animate={{ pathLength: 1, opacity: 1 }}
-                transition={{
-                  duration: 0.55,
-                  delay: 0.15 + i * 0.07,
-                  ease: "easeOut",
-                }}
-              >
-                <title>
-                  {seg.label}: вклад {seg.contribution > 0 ? "+" : ""}
-                  {seg.contribution.toFixed(1)} (средняя оценка{" "}
-                  {Math.round(seg.avgProbability)})
-                </title>
-              </motion.path>
-            );
-          })}
-
-          {/* Тики шкалы */}
-          {allTicks.map((tick) => {
-            const a = valueToAngle(tick, mode);
-            const isMajor = majorTicks.includes(tick);
-            const tickLen = isMajor ? 9 : 4;
-            const p1 = polar(CX, CY, R + STROKE / 2 + 1, a);
-            const p2 = polar(CX, CY, R + STROKE / 2 + 1 + tickLen, a);
+          {/* Мелкие тики */}
+          {minorTicks.map((tick) => {
+            const a = valueToAngle(tick);
+            const p1 = polar(CX, CY, R + STROKE / 2 + 2, a);
+            const p2 = polar(CX, CY, R + STROKE / 2 + 6, a);
             return (
               <line
-                key={tick}
+                key={`minor-${tick}`}
                 x1={p1.x}
                 y1={p1.y}
                 x2={p2.x}
                 y2={p2.y}
-                stroke="var(--muted-foreground)"
-                strokeWidth={isMajor ? 2 : 1}
-                opacity={isMajor ? 0.7 : 0.35}
+                stroke={tickColor}
+                strokeWidth={1}
+                opacity={0.5}
               />
             );
           })}
 
-          {/* Числовые метки шкалы */}
+          {/* Основные тики и метки */}
           {majorTicks.map((tick) => {
-            const a = valueToAngle(tick, mode);
-            const labelOffset = isCircular && (tick === -100 || tick === 100) ? 20 : 16;
-            const p = polar(CX, CY, R + STROKE / 2 + labelOffset, a);
-            const label = isCircular && tick > 0 ? `+${tick}` : `${tick}`;
+            const a = valueToAngle(tick);
+            const p1 = polar(CX, CY, R + STROKE / 2 + 2, a);
+            const p2 = polar(CX, CY, R + STROKE / 2 + 14, a);
+            const labelPos = polar(CX, CY, R + STROKE / 2 + 30, a);
+            const label = tick > 0 ? `+${tick}` : `${tick}`;
+
             return (
-              <text
-                key={tick}
-                x={p.x}
-                y={p.y}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fontSize="12"
-                fill="var(--muted-foreground)"
-                fontWeight={600}
-              >
-                {label}
-              </text>
+              <g key={`major-${tick}`}>
+                <line
+                  x1={p1.x}
+                  y1={p1.y}
+                  x2={p2.x}
+                  y2={p2.y}
+                  stroke={majorTickColor}
+                  strokeWidth={2}
+                  opacity={0.8}
+                />
+                <text
+                  x={labelPos.x}
+                  y={labelPos.y}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize="13"
+                  fill={labelColor}
+                  fontWeight={tick === 0 ? 700 : 600}
+                >
+                  {label}
+                </text>
+              </g>
             );
           })}
 
-          {/* Стрелка-указатель */}
+          {/* Стрелка */}
           <motion.g
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.5, duration: 0.3 }}
+            transition={{ delay: 0.8, duration: 0.3 }}
           >
             <polygon
               points={`${needleBase1.x.toFixed(2)},${needleBase1.y.toFixed(2)} ${needleBase2.x.toFixed(2)},${needleBase2.y.toFixed(2)} ${needleEnd.x.toFixed(2)},${needleEnd.y.toFixed(2)}`}
-              fill={totalColor}
-              style={{
-                filter: `drop-shadow(0 0 4px color-mix(in oklch, ${totalColor} 50%, transparent))`,
-              }}
+              fill={needleColor}
+              style={{ filter: dark ? "drop-shadow(0 2px 4px rgba(0,0,0,0.5))" : "drop-shadow(0 2px 4px rgba(0,0,0,0.3))" }}
             />
-            {/* Центральный пин */}
-            <circle cx={CX} cy={CY} r={13} fill={totalColor} />
-            <circle cx={CX} cy={CY} r={5} fill="var(--background)" />
+            <circle cx={CX} cy={CY} r={10} fill={needleColor} />
+            <circle cx={CX} cy={CY} r={4} fill={dark ? "#1a1a2e" : "#fff"} />
           </motion.g>
 
-          {/* Центральная подпись */}
+          {/* Центральная цифра */}
           <text
             x={CX}
-            y={CY + 50}
+            y={CY + 55}
             textAnchor="middle"
-            fontSize="36"
+            dominantBaseline="middle"
+            fontSize="48"
             fontWeight="700"
-            fill={totalColor}
+            fill={centerColor}
             style={{ fontVariantNumeric: "tabular-nums" }}
           >
-            {formattedDisplay}
-            <tspan fontSize="20" dy="-4" opacity={0.6}>
-              %
-            </tspan>
+            {formatted}
           </text>
+
+          {/* Подпись тира */}
           <text
             x={CX}
-            y={CY + 68}
+            y={CY + 88}
             textAnchor="middle"
-            fontSize="11"
-            fill="var(--muted-foreground)"
-            fontWeight={500}
+            dominantBaseline="middle"
+            fontSize="14"
+            fontWeight="600"
+            fill={tierColor}
+            letterSpacing="0.05em"
           >
-            {centerLabel}
+            {tierLabel}
           </text>
         </svg>
       </div>
 
-      {/* Тир вероятности */}
-      <span
-        className="mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
-        style={{
-          color: totalColor,
-          backgroundColor: `color-mix(in oklch, ${totalColor} 14%, transparent)`,
-        }}
-      >
-        <span
-          className="h-1.5 w-1.5 rounded-full"
-          style={{ backgroundColor: totalColor }}
-        />
-        {probabilityLabelRu(clampedValue)}
-      </span>
-
       {/* Легенда вкладов групп */}
       <div className="mt-4 w-full max-w-[360px] space-y-1.5">
-        {segmentBounds.map((seg) => {
-          const color = groupColor(seg.groupKey);
-          const totalAbs = segments.reduce((s, x) => s + Math.abs(x.contribution), 0) || 1;
-          const shareOfTotal = (Math.abs(seg.contribution) / totalAbs) * 100;
-          const sign = seg.contribution > 0 ? "+" : "";
-          return (
-            <div
-              key={seg.groupKey}
-              className="flex items-center gap-2 text-xs"
-            >
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                style={{ backgroundColor: color }}
-              />
-              <span className="flex-1 leading-tight text-muted-foreground">
-                {seg.label}
-              </span>
-              <span
-                className="font-mono font-semibold tabular-nums"
-                style={{ color }}
-              >
-                {sign}
-                {seg.contribution.toFixed(1)}
-              </span>
-              <span className="w-10 text-right text-[10px] text-muted-foreground">
-                {Math.round(shareOfTotal)}%
-              </span>
-            </div>
-          );
-        })}
+        {segments
+          .filter((s) => Math.abs(s.contribution) > 0.5)
+          .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
+          .map((seg) => {
+            const color = groupColor(seg.groupKey);
+            const sign = seg.contribution > 0 ? "+" : "";
+            const share =
+              totalAbs > 0
+                ? Math.round((Math.abs(seg.contribution) / totalAbs) * 100)
+                : 0;
+            return (
+              <div key={seg.groupKey} className="flex items-center gap-2 text-xs">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                  style={{ backgroundColor: color }}
+                />
+                <span className={cn("flex-1 leading-tight", dark ? "text-white/60" : "text-muted-foreground")}>
+                  {seg.label}
+                </span>
+                <span
+                  className="font-mono font-semibold tabular-nums"
+                  style={{ color }}
+                >
+                  {sign}{seg.contribution.toFixed(1)}
+                </span>
+                <span className={cn("w-10 text-right text-[10px]", dark ? "text-white/40" : "text-muted-foreground")}>
+                  {share}%
+                </span>
+              </div>
+            );
+          })}
       </div>
     </div>
   );
 }
+

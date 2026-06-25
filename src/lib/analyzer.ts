@@ -125,23 +125,18 @@ function getGroupFallbackScore(group: string): number {
 // В analyzer.ts — добавить функцию очистки:
 
 function cleanRationale(text: string): string {
-  // Если текст содержит JSON-подобную структуру — вытаскиваем только rationale_en
-  if (text.includes('"rationale_en"')) {
-    try {
-      const match = text.match(/"rationale_en"\s*:\s*"([^"]+)"/);
-      if (match) return match[1].replace(/\\"/g, '"');
-    } catch {
-      // fallback
-    }
+  if (!text) return "";
+  
+  // Если это JSON — извлекаем rationale_en
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed.rationale_en) return parsed.rationale_en;
+    if (parsed.rationale_ru) return parsed.rationale_ru;
+  } catch {
+    // Не JSON — оставляем как есть
   }
   
-  // Удаляем остатки JSON-структуры
-  return text
-    .replace(/\{[\s\S]*"rationale_en"\s*:\s*"/, '')
-    .replace(/"[\s\S]*\}/, '')
-    .replace(/"key_facts"[\s\S]*/g, '')
-    .replace(/\\"/g, '"')
-    .trim();
+  return text;
 }
 
 export async function analyzeMarker(marker: MarkerDef): Promise<MarkerAnalysis> {
@@ -331,7 +326,7 @@ Be concrete, neutral, and data-driven. Do not include the JSON, just the prose s
   let summaryEn = "";
   try {
     summaryEn = (
-      await llmComplete(
+  await llmCompleteText(
         `You write concise, neutral executive summaries for a peace/escalation index. Today's date: ${todayStr}. Scale: -100 (war) to +100 (peace).`,
         aggPrompt,
       )
@@ -454,7 +449,6 @@ export async function runFullAnalysis(
   });
   const aggregate = await calculateAggregate(scores);
   // В calculateAggregate, перед сохранением:
-  summaryEn = cleanRationale(summaryEn);
   await saveAggregate(calcDate, aggregate, scores.length);
 
   onProgress?.({

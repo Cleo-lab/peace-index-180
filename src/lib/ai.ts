@@ -143,7 +143,21 @@ export async function llmComplete(
     "AI not available. Set GEMINI_API_KEY env var (recommended).",
   );
 }
+/// Chat completion для PLAIN TEXT (без JSON-форсирования).
+/// Используется для aggregate summary и других текстовых задач.
+export async function llmCompleteText(
+  systemPrompt: string,
+  userMessage: string,
+): Promise<string> {
+  await initAI();
 
+  if (_mode === "gemini") {
+    return llmCompleteGeminiText(systemPrompt, userMessage);
+  }
+
+  // Fallback: используем обычный llmComplete (SDK режим)
+  return llmComplete(systemPrompt, userMessage);
+}
 /// Вызов Gemini с retry + circuit breaker + timeout при временных ошибках.
 async function llmCompleteGeminiWithRetry(
   systemPrompt: string,
@@ -294,7 +308,67 @@ async function llmCompleteGemini(
     clearTimeout(timeoutId);
   }
 }
+/// Базовый вызов Gemini API для PLAIN TEXT (без JSON-режима).
+/// Используется для aggregate summary, где нужен чистый текст.
+async function llmCompleteGeminiText(
+  systemPrompt: string,
+  userMessage: string,
+): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not set.");
 
+  const url = `${GEMINI_BASE_URL}/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: userMessage }] }],
+        generationConfig: {
+          temperature: ANALYTICS_TEMPERATURE,
+          maxOutputTokens: 2048,
+          topP: 0.9,
+          // БЕЗ responseMimeType и responseSchema — plain text
+        },
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Gemini API error ${res.status}: ${text.slice(0, 400)}`);
+    }
+
+    const data = (await res.json()) as {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+      promptFeedback?: { blockReason?: string };
+    };
+
+    if (data.promptFeedback?.blockReason) {
+      throw new Error(`Gemini blocked: ${data.promptFeedback.blockReason}`);
+    }
+
+    const text =
+      data.candidates?.[0]?.content?.parts
+        ?.map((p) => p.text || "")
+        .join("") ?? "";
+
+    if (!text) throw new Error("Gemini API returned empty response");
+    return text;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(`Gemini API timeout after ${REQUEST_TIMEOUT_MS}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 /// Вызывает LLM и гарантированно парсит JSON через responseSchema.
 /// Возвращает типизированный объект — не нужен ручной extractJson!
 /// Дополнительно выполняет пост-валидацию: probability клэмпится в [-100, 100].

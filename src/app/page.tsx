@@ -7,6 +7,10 @@ import { GroupOverview, type GroupRow } from "@/components/peace/group-overview"
 import { type SegmentDef } from "@/components/peace/speedometer-gauge";
 import { HistoryChart } from "@/components/peace/history-chart";
 import { Disclaimer } from "@/components/peace/disclaimer";
+import { AboutModal } from "@/components/peace/about-modal";
+import { MethodologyModal } from "@/components/peace/methodology-modal";
+import { DonateModal } from "@/components/peace/donate-modal";
+import { BurgerMenu } from "@/components/peace/burger-menu";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -51,7 +55,6 @@ interface HistoryPoint {
   markerCount: number;
 }
 
-// Обновлён порядок групп: добавлена escalation
 const GROUP_ORDER = ["finance", "law", "escalation", "ukraine_military", "russia", "politics"] as const;
 
 export default function Home() {
@@ -63,6 +66,11 @@ export default function Home() {
   const [mounted, setMounted] = React.useState(false);
   const [openGroups, setOpenGroups] = React.useState<string[]>([]);
   const [showMethodology, setShowMethodology] = React.useState(false);
+
+  // Состояния модалов
+  const [aboutOpen, setAboutOpen] = React.useState(false);
+  const [methodologyOpen, setMethodologyOpen] = React.useState(false);
+  const [donateOpen, setDonateOpen] = React.useState(false);
 
   React.useEffect(() => setMounted(true), []);
 
@@ -116,7 +124,7 @@ export default function Home() {
   const groups = status?.groups ?? [];
   const calcDate = status?.calcDate ?? null;
   const job = status?.job ?? null;
-  const totalMarkers = status?.totalMarkers ?? 24; // Обновлено с 17 на 24
+  const totalMarkers = status?.totalMarkers ?? 24;
 
   // Группировка маркеров + вычисление вкладов
   const { groupRows, segments } = React.useMemo(() => {
@@ -129,7 +137,6 @@ export default function Home() {
       const wp = list.reduce((s, m) => s + m.weight * m.probability, 0);
       const avg = weight > 0 ? wp / weight : 0;
       const meta = groups.find((g) => g.key === key);
-      // Вклад группы = (вес группы / общий вес) × средняя оценка группы
       return {
         key,
         labelRu: meta?.labelRu ?? key,
@@ -173,7 +180,7 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      {/* Header */}
+      {/* Header с бургер-меню */}
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-lg">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -189,7 +196,7 @@ export default function Home() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <a
               href="https://github.com"
               target="_blank"
@@ -212,6 +219,11 @@ export default function Home() {
                 {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </Button>
             )}
+            <BurgerMenu
+              onAbout={() => setAboutOpen(true)}
+              onMethodology={() => setMethodologyOpen(true)}
+              onDonate={() => setDonateOpen(true)}
+            />
           </div>
         </div>
       </header>
@@ -221,7 +233,7 @@ export default function Home() {
           <Skeleton className="h-[420px] w-full rounded-3xl" />
         ) : hasData ? (
           <>
-            {/* HERO — дуговой спидометр с сегментами-вкладами */}
+            {/* HERO */}
             <HeroSection
               totalProbability={aggregate!.totalProbability}
               summaryEn={aggregate!.summaryEn}
@@ -279,7 +291,7 @@ export default function Home() {
               <HistoryChart points={history} current={aggregate!.totalProbability} />
             </motion.section>
 
-            {/* Методология */}
+            {/* Методология — оставляем как Collapsible на главной */}
             <section>
               <Collapsible open={showMethodology} onOpenChange={setShowMethodology}>
                 <Card className="overflow-hidden">
@@ -368,6 +380,11 @@ export default function Home() {
           </div>
         </div>
       </footer>
+
+      {/* Модалы */}
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      <MethodologyModal open={methodologyOpen} onClose={() => setMethodologyOpen(false)} />
+      <DonateModal open={donateOpen} onClose={() => setDonateOpen(false)} />
     </div>
   );
 }
@@ -419,3 +436,4 @@ function EmptyState({
     </Card>
   );
 }
+

@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { llmComplete, sleep } from "@/lib/ai";
+import { llmComplete, llmCompleteText, sleep } from "@/lib/ai";
 import { fetchGoogleNewsRSS, type NewsItem } from "@/lib/rss";
 import {
   MARKERS,

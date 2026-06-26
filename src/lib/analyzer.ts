@@ -323,10 +323,10 @@ INTERPRETATION GUIDE:
 
 Be concrete, neutral, and data-driven. Do not include the JSON, just the prose summary.`;
 
-  let summaryEn = "";
+    let summaryEn = "";
   try {
     summaryEn = (
-  await llmCompleteText(
+      await llmCompleteText(      // ← 6 пробелов (внутри try + внутри выражения)
         `You write concise, neutral executive summaries for a peace/escalation index. Today's date: ${todayStr}. Scale: -100 (war) to +100 (peace).`,
         aggPrompt,
       )

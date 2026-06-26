@@ -14,6 +14,7 @@
 import { runFullAnalysis, startOfTodayUTC } from "@/lib/analyzer";
 import { db } from "@/lib/db";
 import { MARKERS } from "@/lib/markers";
+mport { llmComplete, llmCompleteText, sleep } from "@/lib/ai";
 
 // ===== Конфигурация =====
 // Внешний retry убран (был 3): при ошибке DB он перезапускал ВСЕ 17 маркеров.

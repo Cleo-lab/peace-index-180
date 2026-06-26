@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { fetchNews, sleep, type NewsItem } from "@/lib/rss";
+import { fetchNews, type NewsItem } from "@/lib/rss";
+import { sleep } from "@/lib/ai";
 import { MARKERS, type MarkerDef } from "@/lib/markers";
 
 export interface CollectedEvent {

@@ -4,7 +4,21 @@
 ///
 /// Формат: https://news.google.com/rss/search?q=QUERY&hl=en&gl=US&ceid=US:en
 /// Возвращает XML с <item> элементами (title, link, pubDate, description).
-
+/// Retry-утилита для fetch
+async function fetchWithRetry<T>(
+  fn: () => Promise<T>,
+  retries = 1,
+  delayMs = 2000,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (retries <= 0) throw error;
+    console.log(`[rss] retry after ${delayMs}ms...`);
+    await new Promise(r => setTimeout(r, delayMs));
+    return fetchWithRetry(fn, retries - 1, delayMs);
+  }
+}
 export interface NewsItem {
   title: string;
   url: string;
@@ -27,15 +41,15 @@ export async function fetchGoogleNewsRSS(
     query,
   )}&hl=en&gl=US&ceid=US:en`;
 
-  try {
-    const res = await fetch(rssUrl, {
+    try {
+    const res = await fetchWithRetry(() => fetch(rssUrl, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         Accept: "application/rss+xml, application/xml, text/xml, */*",
       },
       signal: AbortSignal.timeout(15000),
-    });
+    }))
 
     if (!res.ok) {
       console.error(`[rss] Google News HTTP ${res.status} for: ${query}`);
@@ -239,7 +253,104 @@ export async function fetchNews(
   
   return combined.slice(0, maxItems);
 }
+/// Fallback-источники для конкретных маркеров (RSS-ленты)
+const MARKER_FALLBACK_RSS: Record<string, string[]> = {
+  RADA_FDI: [
+    "https://www.rada.gov.ua/rss/news",          // Официальный сайт ВРУ
+    "https://news.liga.net/ukr/rss.xml",          // ЛІГА.net
+  ],
+  CONCESSION_LAWS: [
+    "https://www.rada.gov.ua/rss/news",
+    "https://interfax.com.ua/news/economic/rss",  // Интерфакс-Украина экономика
+  ],
+  BELARUS_MOBIL: [
+    "https://charter97.org/ru/rss/",              // Charter 97 (белорусская оппозиция)
+  ],
+  UKR_POLAND_DEMARCHE: [
+    "https://www.polsatnews.pl/rss/polska.xml",    // Polsat News (Польша)
+    "https://www.rmf24.pl/fakty/feed",             // RMF24 (Польша)
+  ],
+  OSINT_TELEGRAM: [
+    // OSINT Telegram — парсим через Nitter-зеркала Twitter/X аккаунтов
+    "https://nitter.net/WarMonitor3/rss",          // WarMonitor
+    "https://nitter.net/DefMon3/rss",              // DefMon3
+  ],
+};
 
+/// Парсит RSS по URL (универсальный fetcher)
+export async function fetchRSSFeed(
+  feedUrl: string,
+  maxItems = 12,
+): Promise<NewsItem[]> {
+  try {
+    const res = await fetch(feedUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        Accept: "application/rss+xml, application/xml, text/xml, */*",
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!res.ok) {
+      console.warn(`[rss] RSS feed HTTP ${res.status}: ${feedUrl}`);
+      return [];
+    }
+
+    const xml = await res.text();
+    return parseRSSXml(xml, maxItems, ""); // query="" — релевантность будет базовой 0.5
+  } catch (err) {
+    console.warn(`[rss] RSS fetch failed: ${feedUrl}`, err);
+    return [];
+  }
+}
+
+/// Собирает новости для маркера: сначала Google News, потом fallback RSS
+export async function fetchNewsWithFallback(
+  markerId: string,
+  query: string,
+  maxItems = 12,
+): Promise<NewsItem[]> {
+  // 1. Основной источник — Google News RSS
+  const googleNews = await fetchGoogleNewsRSS(query, maxItems);
+  
+  if (googleNews.length >= 3) {
+    return googleNews; // Достаточно данных
+  }
+
+  console.log(`[fallback] ${markerId}: Google News дал ${googleNews.length}, пробуем RSS...`);
+
+  // 2. Fallback RSS-источники
+  const fallbackUrls = MARKER_FALLBACK_RSS[markerId] || [];
+  const allItems: NewsItem[] = [...googleNews];
+
+  for (const url of fallbackUrls) {
+    try {
+      const items = await fetchRSSFeed(url, maxItems);
+      console.log(`[fallback] ${markerId}: ${url} → ${items.length} новостей`);
+      allItems.push(...items);
+      
+      if (allItems.length >= maxItems) break;
+    } catch (e) {
+      console.warn(`[fallback] ${markerId}: ошибка ${url} —`, e);
+    }
+    
+    // Небольшая пауза между fallback-запросами
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  // Дедупликация по URL
+  const seen = new Set<string>();
+  const unique = allItems.filter(item => {
+    if (seen.has(item.url)) return false;
+    seen.add(item.url);
+    return true;
+  });
+
+  // Сортируем по дате (свежие сверху)
+  unique.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+  return unique.slice(0, maxItems);
+}
 /// Пакетный сбор новостей для нескольких запросов с задержкой
 export async function fetchNewsBatch(
   queries: string[],

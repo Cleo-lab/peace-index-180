@@ -131,7 +131,7 @@ async function executeRecalculation(force = false): Promise<void> {
         log("warn", "WARNING: aggregate not found in DB after save — possible race condition. Continuing.");
       }
       
-      log("info", `Verified: aggregate saved with score ${saved.totalProbability}%`);
+            log("info", `Verified: aggregate saved with score ${saved?.totalProbability ?? 0}%`);
       return;
       
     } catch (err) {

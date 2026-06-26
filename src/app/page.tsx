@@ -244,6 +244,7 @@ export default function Home() {
               job={job}
               refreshTick={tick}
               segments={segments}
+              onRefresh={() => window.location.reload()}
             />
 
             {/* Структура индекса */}

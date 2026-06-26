@@ -16,7 +16,7 @@ export function BurgerMenu({ onAbout, onMethodology, onDonate }: BurgerMenuProps
   const ref = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
+    function onClickOutside(e: Event) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
       }

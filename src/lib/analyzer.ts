@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { llmComplete, llmCompleteText, sleep } from "@/lib/ai";
 import { fetchGoogleNewsRSS, type NewsItem } from "@/lib/rss";
+import { getRecentEvents } from "@/lib/collector";
 import {
   MARKERS,
   MARKER_MAP,
@@ -143,7 +144,23 @@ export async function analyzeMarker(marker: MarkerDef): Promise<MarkerAnalysis> 
   const today = startOfTodayUTC();
   const todayStr = fmtDateISO(today);
 
-  const news = await fetchGoogleNewsRSS(marker.searchQuery, 12);
+  let news = await fetchGoogleNewsRSS(marker.searchQuery, 12);
+
+// Fallback: если Google News пуст, берём из БД за последние 7 дней
+if (news.length === 0) {
+  const recentFromDb = await getRecentEvents(marker.id, 7);
+  if (recentFromDb.length > 0) {
+    console.log(`[analyzer] ${marker.id}: fallback to ${recentFromDb.length} DB events`);
+    news = recentFromDb.map(e => ({
+      title: e.rawText.slice(0, 120),
+      url: e.sourceUrl,
+      date: e.eventDate,
+      source: e.sourceName,
+      snippet: e.rawText,
+      relevance: e.relevance,
+    }));
+  }
+}
   console.log(`[analyzer] ${marker.id}: collected ${news.length} news items`);
 
   if (news.length === 0) {
@@ -276,6 +293,14 @@ export async function calculateAggregate(
     return { totalProbability: 0, summaryEn: "No marker data available." };
   }
 
+  // === Подсчёт заглушек ===
+  const lowConfidenceCount = scores.filter(s => s.confidence === "LOW").length;
+  const stubCount = scores.filter(s => 
+    s.confidence === "LOW" && s.rationaleEn.includes("No recent news")
+  ).length;
+  const coveragePercent = Math.round(((scores.length - stubCount) / scores.length) * 100);
+  
+  // === Вычисление взвешенного среднего ===
   let weightedSum = 0;
   let weightSum = 0;
   for (const s of scores) {
@@ -305,7 +330,14 @@ export async function calculateAggregate(
     )
     .join(",\n");
 
+    // Добавляем warning если много заглушек
+  const coverageWarning = stubCount > 3 
+    ? `NOTE: ${stubCount} of ${scores.length} markers returned low-confidence estimates due to lack of recent news data. The index may be less reliable than usual. `
+    : "";
+
   const aggPrompt = `You are the Aggregator for the Peace Index 180. Today is ${todayStr}. The final score stands deterministically at ${total}% (on a scale from -100% max escalation to +100% durable peace, where 0% is deadlock).
+
+${coverageWarning}Data coverage: ${coveragePercent}% of markers have sufficient news-based confidence.
 
 markers = [
 ${markersBrief}

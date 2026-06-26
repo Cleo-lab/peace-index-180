@@ -156,7 +156,6 @@ export function HeroSection({
           <SpeedometerGauge 
             value={totalProbability} 
             segments={segments} 
-            mode="circular"
           />
           
           {/* Легенда под спидометром */}

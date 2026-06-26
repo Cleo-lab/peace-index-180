@@ -31,7 +31,6 @@ const GROUP_COLORS: Record<string, string> = {
 
 function groupColor(key: string): string {
   try {
-    // @ts-expect-error
     const { groupColor: imported } = require("@/lib/colors");
     if (imported) return imported(key);
   } catch {

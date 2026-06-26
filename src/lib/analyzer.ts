@@ -462,7 +462,10 @@ export async function runFullAnalysis(
 }
 
 export async function translateToRussian(text: string): Promise<string> {
-  const result = await llmComplete(
+  // ВАЖНО: llmCompleteText вместо llmComplete.
+  // llmComplete форсирует responseMimeType:"application/json" и MARKER_RESPONSE_SCHEMA —
+  // Gemini возвращает JSON вместо русского текста, который и отображался в UI.
+  const result = await llmCompleteText(
     "You are a professional translator. Translate the user's text into natural, accurate Russian. Preserve meaning, neutrality, and any URLs. Return ONLY the translation, no commentary.",
     text,
   );

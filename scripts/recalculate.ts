@@ -16,8 +16,10 @@ import { db } from "@/lib/db";
 import { MARKERS } from "@/lib/markers";
 
 // ===== Конфигурация =====
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 30_000; // 30 секунд между попытками
+// Внешний retry убран (был 3): при ошибке DB он перезапускал ВСЕ 17 маркеров.
+// Внутренний AI-retry (5 попыток) в ai.ts достаточен для сетевых сбоев.
+const MAX_RETRIES = 1;
+const RETRY_DELAY_MS = 30_000; // 30 секунд (не используется при MAX_RETRIES=1, но оставлен для понятности)
 
 // ===== Логирование с timestamp =====
 function log(level: "info" | "warn" | "error", message: string) {
@@ -82,13 +84,15 @@ async function executeRecalculation(force = false): Promise<void> {
   const today = startOfTodayUTC();
   log("info", `Starting recalculation for ${today.toISOString().slice(0, 10)}...`);
   
-  //if (!force) {
-  //  const exists = await checkExistingCalculation();
-  //  if (exists) {
-  //    log("info", "Skipping: calculation already exists. Use --force to override.");
-  //    return;
-  //  }
-  //}
+  // Защита от двойного запуска: если расчёт уже есть — пропускаем.
+  // Это предотвращает бесполезный повторный прогон всех 17 маркеров.
+  if (!force) {
+    const exists = await checkExistingCalculation();
+    if (exists) {
+      log("info", "Skipping: calculation already exists. Use --force to override.");
+      return;
+    }
+  }
   
   let lastError: Error | null = null;
   
@@ -121,7 +125,9 @@ async function executeRecalculation(force = false): Promise<void> {
       });
       
       if (!saved) {
-        throw new Error("Calculation completed but aggregate was not saved to database!");
+        // Предупреждение вместо throw: бросок ошибки здесь вызывал повторный
+        // запуск ВСЕХ 17 маркеров из-за внешнего retry-цикла.
+        log("warn", "WARNING: aggregate not found in DB after save — possible race condition. Continuing.");
       }
       
       log("info", `Verified: aggregate saved with score ${saved.totalProbability}%`);

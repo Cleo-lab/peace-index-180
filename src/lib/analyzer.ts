@@ -284,12 +284,11 @@ export async function calculateAggregate(
   }
   let total = weightSum > 0 ? weightedSum / weightSum : 0;
 
-  // Симметричный штраф за LOW-confidence: тянет к 0 (нейтралитет)
   const heavyLow = scores.filter(
     (s) => s.weight > 8 && s.confidence === "LOW",
   ).length;
 
-  const penalty = heavyLow * 4; // Уменьшили с 5 до 4, т.к. больше маркеров
+  const penalty = heavyLow * 4;
   if (total > 0) {
     total = Math.max(0, total - penalty);
   } else if (total < 0) {
@@ -323,22 +322,29 @@ INTERPRETATION GUIDE:
 
 Be concrete, neutral, and data-driven. Do not include the JSON, just the prose summary.`;
 
-    let summaryEn = "";
-  try {
-    summaryEn = (
-      await llmCompleteText(      // ← 6 пробелов (внутри try + внутри выражения)
-        `You write concise, neutral executive summaries for a peace/escalation index. Today's date: ${todayStr}. Scale: -100 (war) to +100 (peace).`,
-        aggPrompt,
-      )
-    ).trim();
-  } catch (err) {
-    console.error("[analyzer] aggregate summary failed:", err);
-    summaryEn = `Weighted average across ${scores.length} markers yields an index score of ${total}% (range -100% war to +100% peace) as of ${todayStr}.`;
-  }
+  const summaryResult = await generateSummary(todayStr, aggPrompt, scores.length, total);
 
-  return { totalProbability: total, summaryEn };
+  return { totalProbability: total, summaryEn: summaryResult };
 }
 
+// Workaround для бага Bun #13208: let + await в одном блоке async-функции
+async function generateSummary(
+  todayStr: string,
+  aggPrompt: string,
+  scoreCount: number,
+  total: number,
+): Promise<string> {
+  try {
+    const text = await llmCompleteText(
+      `You write concise, neutral executive summaries for a peace/escalation index. Today's date: ${todayStr}. Scale: -100 (war) to +100 (peace).`,
+      aggPrompt,
+    );
+    return text.trim();
+  } catch (err) {
+    console.error("[analyzer] aggregate summary failed:", err);
+    return `Weighted average across ${scoreCount} markers yields an index score of ${total}% (range -100% war to +100% peace) as of ${todayStr}.`;
+  }
+}
 export async function saveMarkerScore(
   calcDate: Date,
   marker: MarkerDef,

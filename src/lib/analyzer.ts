@@ -335,15 +335,15 @@ export async function calculateAggregate(
     ? `NOTE: ${stubCount} of ${scores.length} markers returned low-confidence estimates due to lack of recent news data. The index may be less reliable than usual. `
     : "";
 
-  const aggPrompt = `You are the Aggregator for the Peace Index 180. Today is ${todayStr}. The final score stands deterministically at ${total}% (on a scale from -100% max escalation to +100% durable peace, where 0% is deadlock).
+  const aggPrompt = `You are the Aggregator for the Peace Index 180. Today is ${todayStr}. The final score stands deterministically at ${total} (on a scale from -100 max escalation to +100 durable peace, where 0 is deadlock).
 
-${coverageWarning}Data coverage: ${coveragePercent}% of markers have sufficient news-based confidence.
+${coverageWarning}Data coverage: ${coveragePercent} of markers have sufficient news-based confidence.
 
 markers = [
 ${markersBrief}
 ]
 
-Write an executive summary (exactly 3 sentences, in English) explaining WHY the index stands at ${total}% — name the 2-3 most influential positive or negative drivers. Use concrete examples from the markers' rationales.
+Write an executive summary (exactly 3 sentences, in English) explaining WHY the index stands at ${total} — name the 2-3 most influential positive or negative drivers. Use concrete examples from the markers' rationales.
 
 INTERPRETATION GUIDE:
 • +80 to +100: "Durable peace is becoming highly probable"
@@ -374,7 +374,7 @@ async function generateSummary(
     return text.trim();
   } catch (err) {
     console.error("[analyzer] aggregate summary failed:", err);
-    return `Weighted average across ${scoreCount} markers yields an index score of ${total}% (range -100% war to +100% peace) as of ${todayStr}.`;
+    return `Weighted average across ${scoreCount} markers yields an index score of ${total} (range -100 war to +100 peace) as of ${todayStr}.`;
   }
 }
 export async function saveMarkerScore(

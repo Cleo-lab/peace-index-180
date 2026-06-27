@@ -115,7 +115,7 @@ export function GroupOverview({ groups, openKeys, onToggle }: GroupOverviewProps
                     className="font-mono text-lg font-bold tabular-nums sm:text-xl"
                     style={{ color: probColor }}
                   >
-                    {Math.round(g.avg)}%
+                    {Math.round(g.avg)}
                   </div>
                   <div className="text-[10px] text-muted-foreground">
                     вклад{" "}

@@ -119,7 +119,7 @@ export function MarkerCard({ marker, calcDate }: MarkerCardProps) {
                 className="font-mono text-2xl font-bold tabular-nums"
                 style={{ color: pColor }}
               >
-                {marker.probability}%
+                {marker.probability}
               </span>
               <span className="text-[10px] text-muted-foreground">
                 {probabilityLabelRu(marker.probability)}

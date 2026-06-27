@@ -129,7 +129,7 @@ export function HeroSection({
   const elapsedSec = job?.elapsedMs ? Math.round(job.elapsedMs / 1000) : null;
 
   // Форматируем число со знаком
-  const formattedScore = totalProbability > 0 ? `+${totalProbability}%` : `${totalProbability}%`;
+  const formattedScore = totalProbability > 0 ? `+${totalProbability}` : `${totalProbability}`;
 
   return (
     <motion.section
@@ -163,8 +163,8 @@ export function HeroSection({
 
         {/* Правая часть — summary + meta + actions */}
         <div className="flex flex-col justify-center">
-          <div className="flex items-center gap-2">
-            <TierIcon p={totalProbability} />
+          <div className="flex items-center">
+            
             <span 
               className="text-xs font-semibold uppercase tracking-wider"
               style={{ color }}
@@ -181,7 +181,7 @@ export function HeroSection({
           </h2>
 
           <p className="mt-1 text-xs text-muted-foreground">
-            Круговой индикатор: 0° = война (-100%), 180° = стагнация (0%), 360° = мир (+100%).
+            Круговой индикатор: -100 - 0 = война, 0 = стагнация, 0 + 100 = мир.
             Каждый цветной сегмент — вклад группы маркеров.
           </p>
 
@@ -206,7 +206,7 @@ export function HeroSection({
                 {ruText ? (showRu ? "Показать EN" : "Показать RU") : "Перевести на RU"}
               </Button>
             </div>
-            <p className="text-sm leading-relaxed text-foreground">
+            <p className="text-justify text-sm leading-relaxed text-foreground">
               {showRu && ruText ? ruText : summaryEn}
             </p>
           </div>
@@ -232,14 +232,7 @@ export function HeroSection({
               горизонт 180 дней
             </Badge>
             {/* Индикатор тира */}
-            <Badge 
-              variant="outline" 
-              className="gap-1.5 rounded-full"
-              style={{ borderColor: color, color }}
-            >
-              <TierIcon p={totalProbability} />
-              {probabilityLabelRu(totalProbability)}
-            </Badge>
+            
           </div>
 
           {/* Прогресс пересчёта */}

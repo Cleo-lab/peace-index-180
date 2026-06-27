@@ -184,9 +184,9 @@ export default function Home() {
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-lg">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-2.5">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
-              <Activity className="h-5 w-5" />
-            </div>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm">
+  <img src="/logo.png" alt="Peace Index 180" className="h-full w-full object-cover" />
+</div>
             <div className="min-w-0">
               <h1 className="truncate text-base font-bold leading-tight sm:text-lg">
                 Индекс Мира 180

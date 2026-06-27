@@ -15,19 +15,19 @@ const WALLETS = [
   {
     name: "Bitcoin",
     symbol: "BTC",
-    address: "bc1q...YOUR_BTC_ADDRESS",
+    address: "bc1qn2395qfw5fknxa83lhyzhrmx7umsj3eyygeph9",
     color: "#F7931A",
   },
   {
     name: "Ethereum",
     symbol: "ETH",
-    address: "0x...YOUR_ETH_ADDRESS",
+    address: "0xBA9abB423596974f4908f12F92CBd9D64b38447b",
     color: "#627EEA",
   },
   {
     name: "USDT TRC-20",
     symbol: "USDT",
-    address: "T...YOUR_USDT_ADDRESS",
+    address: "TJh83QXwZK38hXvwXhEodErZakJhgasSfx",
     color: "#26A17B",
   },
 ];
@@ -68,7 +68,7 @@ export function DonateModal({ open, onClose }: DonateModalProps) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm p-4 pt-20 sm:pt-24"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm p-4 pt-16 sm:pt-20"
           onClick={onClose}
         >
           <motion.div
@@ -76,7 +76,7 @@ export function DonateModal({ open, onClose }: DonateModalProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
-            className="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl"
+            className="relative w-full max-w-md max-h-[80vh] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -97,7 +97,7 @@ export function DonateModal({ open, onClose }: DonateModalProps) {
             </div>
 
             <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-              Проект некоммерческий. Ваши донаты идут на серверы, API и время на разработку.
+              Peace Index 180 — это независимый некоммерческий проект, который ежедневно оценивает вероятность наступления мира в течение ближайших 180 дней на основе открытых данных и анализа с помощью искусственного интеллекта. Если вы считаете проект полезным и хотите помочь его развитию, вы можете поддержать его добровольным пожертвованием в криптовалюте. Спасибо за поддержку.
             </p>
 
             <div className="mt-5 space-y-3">
@@ -137,16 +137,8 @@ export function DonateModal({ open, onClose }: DonateModalProps) {
             </div>
 
             <div className="mt-5 rounded-xl bg-muted/30 p-4">
-              <p className="text-sm font-medium">Другие способы</p>
-              <a
-                href="https://boosty.to/YOUR_BOOSTY"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1.5 text-sm text-emerald-600 hover:underline dark:text-emerald-400"
-              >
-                Boosty
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
+              <p className="text-sm font-medium">Спасибо!</p>
+              
             </div>
 
             <div className="mt-6 flex justify-end">
@@ -160,3 +152,4 @@ export function DonateModal({ open, onClose }: DonateModalProps) {
     </AnimatePresence>
   );
 }
+

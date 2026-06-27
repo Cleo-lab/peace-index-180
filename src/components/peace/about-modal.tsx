@@ -33,7 +33,7 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm p-4 pt-20 sm:pt-24"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm p-4 pt-16 sm:pt-20"
           onClick={onClose}
         >
           <motion.div
@@ -41,7 +41,7 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
-            className="relative w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-xl"
+            className="relative w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -112,3 +112,4 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
     </AnimatePresence>
   );
 }
+

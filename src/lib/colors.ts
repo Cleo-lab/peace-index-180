@@ -59,12 +59,12 @@ export function trendColor(t: string): string {
 // Используются в спидометре (сегменты дуги), карточках групп, аккордеонах.
 // 6 контрастных цветов, без indigo/blue.
 export const GROUP_COLORS: Record<string, string> = {
-  finance: "oklch(0.72 0.19 152)", // emerald — финансы/инвестиции
-  law: "oklch(0.80 0.19 125)", // lime — законодательство
-  escalation: "oklch(0.55 0.24 22)", // deep rose — сигналы эскалации
-  ukraine_military: "oklch(0.64 0.22 18)", // rose — военные UA
-  russia: "oklch(0.70 0.19 55)", // orange — РФ
-  politics: "oklch(0.65 0.24 350)", // magenta — политика
+  finance: "oklch(0.65 0.18 145)",     // emerald — финансы
+  law: "oklch(0.78 0.16 95)",          // lime/yellow-green — законодательство (было слишком близко к finance)
+  escalation: "oklch(0.55 0.24 25)",   // deep red — эскалация (тёмнее, чтобы отличаться от ukraine_military)
+  ukraine_military: "oklch(0.60 0.20 10)", // rose — военные UA (светлее и более розовый, чем escalation)
+  russia: "oklch(0.70 0.19 55)",       // orange — РФ
+  politics: "oklch(0.60 0.22 320)",    // magenta/purple — политика (более фиолетовый)
 };
 
 export function groupColor(groupKey: string): string {

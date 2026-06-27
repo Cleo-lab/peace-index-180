@@ -3,7 +3,7 @@
 import * as React from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-
+import { groupColor } from "@/lib/colors";
 export interface SegmentDef {
   groupKey: string;
   label: string;
@@ -19,25 +19,7 @@ interface SpeedometerGaugeProps {
   dark?: boolean;
 }
 
-// ===== Цвета групп (fallback) =====
-const GROUP_COLORS: Record<string, string> = {
-  finance: "#10b981",
-  law: "#84cc16",
-  escalation: "#dc2626",
-  ukraine_military: "#e11d48",
-  russia: "#f97316",
-  politics: "#d946ef",
-};
 
-function groupColor(key: string): string {
-  try {
-    const { groupColor: imported } = require("@/lib/colors");
-    if (imported) return imported(key);
-  } catch {
-    // fallback
-  }
-  return GROUP_COLORS[key] || "#999";
-}
 
 // ===== Геометрия: дуга 270° с зазором 90° снизу =====
 // Система polar: 0° = верх (12:00), 90° = право (3:00), 180° = низ (6:00), 270° = лево (9:00)
@@ -348,7 +330,6 @@ export function SpeedometerGauge({
       {/* Легенда вкладов групп */}
       <div className="mt-4 w-full max-w-[360px] space-y-1.5">
         {segments
-          .filter((s) => Math.abs(s.contribution) > 0.5)
           .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
           .map((seg) => {
             const color = groupColor(seg.groupKey);

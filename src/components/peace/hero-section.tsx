@@ -158,34 +158,7 @@ export function HeroSection({
             segments={segments} 
           />
           
-          {/* Легенда под спидометром */}
-          <div className="mt-4 grid grid-cols-5 gap-1 text-[10px] text-muted-foreground">
-            <div className="flex flex-col items-center gap-1">
-              <div className="h-2 w-8 rounded-full" style={{ background: "oklch(0.55 0.24 22)" }} />
-              <span>Война</span>
-              <span className="text-[9px]">-100..-60</span>
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <div className="h-2 w-8 rounded-full" style={{ background: "oklch(0.70 0.19 55)" }} />
-              <span>Эскалация</span>
-              <span className="text-[9px]">-60..-20</span>
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <div className="h-2 w-8 rounded-full" style={{ background: "oklch(0.7 0 0)" }} />
-              <span>Стагнация</span>
-              <span className="text-[9px]">-20..+20</span>
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <div className="h-2 w-8 rounded-full" style={{ background: "oklch(0.78 0.16 80)" }} />
-              <span>Тенденция</span>
-              <span className="text-[9px]">+20..+60</span>
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <div className="h-2 w-8 rounded-full" style={{ background: "oklch(0.72 0.19 152)" }} />
-              <span>Мир</span>
-              <span className="text-[9px]">+60..+100</span>
-            </div>
-          </div>
+          
         </div>
 
         {/* Правая часть — summary + meta + actions */}

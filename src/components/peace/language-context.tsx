@@ -46,6 +46,7 @@ const UI_TEXT: Record<Lang, Record<string, string>> = {
     widgetDetails: "Детальнее",
     widgetShare: "Поделиться",
     widgetCopied: "Ссылка скопирована в буфер обмена!",
+    widgetShareText: "Оценка вероятности мира в Украине",
     // Меню
     menuTitle: "Меню",
     menuAbout: "О проекте",
@@ -164,6 +165,7 @@ runLastCalc: "Последний расчёт",
     widgetDetails: "Details",
     widgetShare: "Share",
     widgetCopied: "Link copied to clipboard!",
+    widgetShareText: "Peace probability assessment for Ukraine",
     // Menu
     menuTitle: "Menu",
     menuAbout: "About",

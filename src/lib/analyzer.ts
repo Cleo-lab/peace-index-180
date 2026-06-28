@@ -452,81 +452,28 @@ export async function runFullAnalysis(
     rationaleEn: string;
   }[] = [];
 
-  // Этап 1: анализ маркеров
-    // ===== Перевод маркеров ПАКЕТНО (1 запрос вместо 24) =====
-  // Сначала проверяем, какие ещё не переведены
-  const toTranslate: { markerId: string; rationaleEn: string }[] = [];
-  for (const s of scores) {
-    const existing = await db.markerScore.findUnique({
-      where: { calcDate_markerId: { calcDate, markerId: s.markerId } },
-      select: { rationaleRu: true },
-    });
-    if (!existing?.rationaleRu) {
-      toTranslate.push({ markerId: s.markerId, rationaleEn: s.rationaleEn });
-    }
-  }
-
-  if (toTranslate.length > 0) {
+  // ===== Этап 1: анализ всех маркеров =====
+  for (let i = 0; i < sortedMarkers.length; i++) {
+    const marker = sortedMarkers[i];
     onProgress?.({
-      phase: "aggregating",
-      current: `Перевод ${toTranslate.length} маркеров пакетно`,
-      idx: sortedMarkers.length,
+      phase: "analyzing",
+      current: marker.id,
+      idx: i,
       total: sortedMarkers.length,
     });
 
-    const payload = toTranslate
-      .map((s) => `  "${s.markerId}": ${JSON.stringify(s.rationaleEn)}`)
-      .join(",\n");
-
-    const batchPrompt = `Translate the following English texts into natural, accurate Russian. Preserve meaning, neutrality, and any URLs. Return ONLY a valid JSON object where keys are marker IDs and values are Russian translations.
-
-{
-${payload}
-}`;
-
-    try {
-      const raw = await llmCompleteText(
-        "You are a professional translator. Translate to Russian accurately. Return only JSON.",
-        batchPrompt,
-      );
-
-      let parsed: Record<string, string>;
-      try {
-        const cleaned = raw.trim().replace(/^```json?/i, "").replace(/```$/, "").trim();
-        parsed = JSON.parse(cleaned);
-      } catch {
-        console.error("[analyzer] Batch JSON parse failed, raw:", raw.slice(0, 200));
-        throw new Error("parse failed");
-      }
-
-      for (const s of toTranslate) {
-        const ru = parsed[s.markerId];
-        if (ru) {
-          await db.markerScore.update({
-            where: { calcDate_markerId: { calcDate, markerId: s.markerId } },
-            data: { rationaleRu: ru },
-          });
-        }
-      }
-    } catch (err) {
-      console.error("[analyzer] Batch translation failed, falling back to sequential:", err);
-      // Fallback: по одному, но с задержкой 4 сек (60/15=4)
-      for (const s of toTranslate) {
-        try {
-          await sleep(4000);
-          const ru = await translateToRussian(s.rationaleEn);
-          await db.markerScore.update({
-            where: { calcDate_markerId: { calcDate, markerId: s.markerId } },
-            data: { rationaleRu: ru },
-          });
-        } catch (e) {
-          console.error(`[analyzer] Fallback translation failed for ${s.markerId}:`, e);
-        }
-      }
-    }
+    const analysis = await analyzeMarker(marker);
+    scores.push({
+      markerId: marker.id,
+      probability: analysis.probability,
+      confidence: analysis.confidence,
+      weight: marker.weight,
+      rationaleEn: analysis.rationaleEn,
+    });
+    await saveMarkerScore(calcDate, marker, analysis);
   }
 
-  // Этап 2: агрегация
+  // ===== Этап 2: агрегация =====
   onProgress?.({
     phase: "aggregating",
     current: "Aggregating final index",
@@ -536,10 +483,74 @@ ${payload}
   const aggregate = await calculateAggregate(scores);
   await saveAggregate(calcDate, aggregate, scores.length);
 
-  // Этап 3: перевод на русский
+  // ===== Этап 3: пакетный перевод rationale маркеров =====
   onProgress?.({
     phase: "aggregating",
-    current: "Перевод summary на русский",
+    current: `Batch translating ${scores.length} markers`,
+    idx: sortedMarkers.length,
+    total: sortedMarkers.length,
+  });
+
+  const payloadItems = scores
+    .map((s) => `  "${s.markerId}": ${JSON.stringify(s.rationaleEn)}`)
+    .join(",\n");
+
+  const batchPrompt = `Translate the following English texts into natural, accurate Russian. Preserve meaning, neutrality, and any URLs. Return ONLY a valid JSON object where keys are marker IDs and values are Russian translations.
+
+{
+${payloadItems}
+}`;
+
+  try {
+    const raw = await llmCompleteText(
+      "You are a professional translator. Translate to Russian accurately. Return only valid JSON with the same keys as input.",
+      batchPrompt,
+    );
+
+    const cleaned = raw
+      .trim()
+      .replace(/^```json?\s*/i, "")
+      .replace(/```\s*$/, "")
+      .trim();
+
+    const parsed = JSON.parse(cleaned) as Record<string, string>;
+
+    // Сохраняем все переводы одним циклом (параллельно)
+    await Promise.all(
+      scores.map((s) => {
+        const ru = parsed[s.markerId];
+        if (ru) {
+          return db.markerScore.update({
+            where: { calcDate_markerId: { calcDate, markerId: s.markerId } },
+            data: { rationaleRu: ru },
+          });
+        }
+        return Promise.resolve();
+      })
+    );
+
+    console.log(`[analyzer] Batch translated ${Object.keys(parsed).length}/${scores.length} markers`);
+  } catch (err) {
+    console.error("[analyzer] Batch translation failed:", err);
+    // Fallback: последовательный перевод с задержкой
+    for (const s of scores) {
+      try {
+        await sleep(4000);
+        const ru = await translateToRussian(s.rationaleEn);
+        await db.markerScore.update({
+          where: { calcDate_markerId: { calcDate, markerId: s.markerId } },
+          data: { rationaleRu: ru },
+        });
+      } catch (e) {
+        console.error(`[analyzer] Fallback translation failed for ${s.markerId}:`, e);
+      }
+    }
+  }
+
+  // ===== Этап 4: перевод summary =====
+  onProgress?.({
+    phase: "aggregating",
+    current: "Translating summary to Russian",
     idx: sortedMarkers.length,
     total: sortedMarkers.length,
   });
@@ -554,26 +565,6 @@ ${payload}
     console.error("[analyzer] Failed to translate aggregate summary:", err);
   }
 
-  for (let i = 0; i < scores.length; i++) {
-    const s = scores[i];
-    onProgress?.({
-      phase: "aggregating",
-      current: `Перевод маркера ${s.markerId} (${i + 1}/${scores.length})`,
-      idx: sortedMarkers.length,
-      total: sortedMarkers.length,
-    });
-    try {
-      const ru = await translateToRussian(s.rationaleEn);
-      await db.markerScore.update({
-        where: { calcDate_markerId: { calcDate, markerId: s.markerId } },
-        data: { rationaleRu: ru },
-      });
-      await sleep(1000);
-    } catch (err) {
-      console.error(`[analyzer] Failed to translate ${s.markerId}:`, err);
-    }
-  }
-
   onProgress?.({
     phase: "done",
     current: "Complete",
@@ -583,7 +574,6 @@ ${payload}
 
   return aggregate;
 }
-
 export async function translateToRussian(text: string): Promise<string> {
   // ВАЖНО: llmCompleteText вместо llmComplete.
   // llmComplete форсирует responseMimeType:"application/json" и MARKER_RESPONSE_SCHEMA —

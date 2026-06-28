@@ -8,6 +8,7 @@ import { LanguageProvider, useLanguage } from "@/components/peace/language-conte
 import { LanguageToggle } from "@/components/peace/language-toggle";
 import { probabilityLabelRu } from "@/lib/colors";
 import { ArrowUpRight, Share2, X } from "lucide-react";
+import Head from "next/head";
 
 const GROUP_ORDER = ["finance", "law", "escalation", "ukraine_military", "russia", "politics"] as const;
 
@@ -30,7 +31,16 @@ export default function WidgetPage() {
 function WidgetContent() {
   const [data, setData] = React.useState<WidgetData | null>(null);
   const [showRationale, setShowRationale] = React.useState(false);
-  const { lang } = useLanguage();
+  const { lang, tx, setLang } = useLanguage();
+
+  // Синхронизируем язык из URL при загрузке
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlLang = params.get("lang");
+    if (urlLang === "en" || urlLang === "ru") {
+      setLang(urlLang);
+    }
+  }, [setLang]);
 
   React.useEffect(() => {
     fetch("/api/status", { cache: "no-store" })
@@ -54,6 +64,7 @@ function WidgetContent() {
           return {
             key,
             labelRu: meta?.labelRu ?? key,
+            labelEn: meta?.label,
             avg,
             weight,
             count: list.length,
@@ -71,6 +82,7 @@ function WidgetContent() {
         const segments: SegmentDef[] = rows.map((r) => ({
           groupKey: r.key,
           label: r.labelRu,
+          labelEn: r.labelEn,
           contribution: r.contribution,
           avgProbability: r.avg,
         }));
@@ -94,83 +106,98 @@ function WidgetContent() {
   }
 
   const rationaleText = lang === "ru" && data.summaryRu ? data.summaryRu : data.summaryEn;
+  const formatted = data.totalProbability > 0 ? `+${data.totalProbability}` : `${data.totalProbability}`;
+  const shareUrl = `https://peace-index-180.vercel.app/widget?lang=${lang}`;
+  const ogImageUrl = `https://peace-index-180.vercel.app/api/og?v=${data.totalProbability}&d=${encodeURIComponent(data.calcDate)}&l=${encodeURIComponent(probabilityLabelRu(data.totalProbability))}&lang=${lang}`;
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center bg-black px-4">
-      <div className="w-full max-w-[320px]">
-        <SpeedometerGauge
-          value={data.totalProbability}
-          segments={data.segments}
-          dark={true}
-        />
-      </div>
+    <>
+      <Head>
+        <title>{tx("appTitle")}: {formatted}%</title>
+        <meta property="og:title" content={`${tx("appTitle")}: ${formatted}%`} />
+        <meta property="og:description" content={rationaleText.slice(0, 160)} />
+        <meta property="og:image" content={ogImageUrl} />
+        <meta property="og:url" content={shareUrl} />
+        <meta property="og:type" content="website" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:image" content={ogImageUrl} />
+      </Head>
 
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-        <LanguageToggle variant="dark" />
-        <button
-          onClick={() => setShowRationale(true)}
-          className="rounded-full bg-white/10 px-5 py-2.5 text-sm text-white backdrop-blur-sm transition hover:bg-white/20"
-        >
-          Обоснование
-        </button>
-        <ShareButton value={data.totalProbability} calcDate={data.calcDate} />
-      </div>
+      <div className="flex h-screen flex-col items-center justify-center bg-black px-4">
+        <div className="w-full max-w-[320px]">
+          <SpeedometerGauge
+            value={data.totalProbability}
+            segments={data.segments}
+            dark={true}
+          />
+        </div>
 
-      {showRationale && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="fixed inset-0 z-50 flex flex-col bg-black/95 p-6"
-        >
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          <LanguageToggle variant="dark" />
           <button
-            onClick={() => setShowRationale(false)}
-            className="absolute right-4 top-4 text-white/60"
+            onClick={() => setShowRationale(true)}
+            className="rounded-full bg-white/10 px-5 py-2.5 text-sm text-white backdrop-blur-sm transition hover:bg-white/20"
           >
-            <X className="h-6 w-6" />
+            {tx("widgetRationale")}
           </button>
-          <h3 className="mt-8 text-lg font-semibold text-white">Обоснование оценки</h3>
-          <p className="mt-4 flex-1 overflow-y-auto text-sm leading-relaxed text-white/80">
-            {rationaleText}
-          </p>
-          <a
-            href="https://peace-index-180.vercel.app/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-4 flex items-center justify-center gap-2 rounded-full bg-emerald-600 py-3 text-sm font-medium text-white"
+          <ShareButton value={data.totalProbability} calcDate={data.calcDate} />
+        </div>
+
+        {showRationale && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 z-50 flex flex-col bg-black/95 p-6"
           >
-            Детальнее
-            <ArrowUpRight className="h-4 w-4" />
-          </a>
-        </motion.div>
-      )}
-    </div>
+            <button
+              onClick={() => setShowRationale(false)}
+              className="absolute right-4 top-4 text-white/60"
+            >
+              <X className="h-6 w-6" />
+            </button>
+            <h3 className="mt-8 text-lg font-semibold text-white">
+              {tx("widgetRationaleTitle")}
+            </h3>
+            <p className="mt-4 flex-1 overflow-y-auto text-justify text-sm leading-relaxed text-white/80">
+              {rationaleText}
+            </p>
+            <a
+              href="https://peace-index-180.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 flex items-center justify-center gap-2 rounded-full bg-emerald-600 py-3 text-sm font-medium text-white"
+            >
+              {tx("widgetDetails")}
+              <ArrowUpRight className="h-4 w-4" />
+            </a>
+          </motion.div>
+        )}
+      </div>
+    </>
   );
 }
 
-// ShareButton остаётся без изменений
 function ShareButton({ value, calcDate }: { value: number; calcDate: string }) {
+  const { lang, tx } = useLanguage();
   const [sharing, setSharing] = React.useState(false);
+
+  const shareUrl = `https://peace-index-180.vercel.app/widget?lang=${lang}`;
+  const label = probabilityLabelRu(value);
 
   async function handleShare() {
     setSharing(true);
     try {
-      const imageUrl = `https://peace-index-180.vercel.app/api/share-image?v=${value}&d=${calcDate}&l=${encodeURIComponent(probabilityLabelRu(value))}`;
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const file = new File([blob], "peace-index-180.png", { type: "image/png" });
-
-      if (navigator.share && navigator.canShare({ files: [file] })) {
+      if (navigator.share) {
         await navigator.share({
-          files: [file],
-          title: `Индекс Мира 180: ${value > 0 ? "+" : ""}${value}%`,
-          text: `Оценка вероятности мира в Украине: ${probabilityLabelRu(value)}`,
-          url: "https://peace-index-180.vercel.app/",
+          title: `${tx("appTitle")}: ${value > 0 ? "+" : ""}${value}%`,
+          text: `${tx("widgetShareText")}: ${label}`,
+          url: shareUrl,
         });
       } else {
         await navigator.clipboard.writeText(
-          `Индекс Мира 180: ${value > 0 ? "+" : ""}${value}% — ${probabilityLabelRu(value)}\nhttps://peace-index-180.vercel.app/`
+          `${tx("appTitle")}: ${value > 0 ? "+" : ""}${value}% — ${label}\n${shareUrl}`
         );
-        alert("Ссылка скопирована в буфер обмена!");
+        alert(tx("widgetCopied"));
       }
     } catch (e) {
       console.error("Share failed:", e);
@@ -186,7 +213,7 @@ function ShareButton({ value, calcDate }: { value: number; calcDate: string }) {
       className="flex items-center gap-2 rounded-full bg-white/5 px-4 py-2.5 text-sm text-white/60 transition hover:bg-white/10"
     >
       <Share2 className="h-4 w-4" />
-      {sharing ? "..." : "Поделиться"}
+      {sharing ? "..." : tx("widgetShare")}
     </button>
   );
 }

@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Heart, Copy, Check, ExternalLink } from "lucide-react";
+import { X, Heart, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useLanguage } from "@/components/peace/language-context";
 
 interface DonateModalProps {
   open: boolean;
@@ -33,6 +34,7 @@ const WALLETS = [
 ];
 
 export function DonateModal({ open, onClose }: DonateModalProps) {
+  const { tx } = useLanguage();
   const [copied, setCopied] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -53,10 +55,10 @@ export function DonateModal({ open, onClose }: DonateModalProps) {
     try {
       await navigator.clipboard.writeText(address);
       setCopied(symbol);
-      toast.success("Адрес скопирован");
+      toast.success(tx("donateCopied"));
       setTimeout(() => setCopied(null), 2000);
     } catch {
-      toast.error("Не удалось скопировать");
+      toast.error(tx("donateCopyError"));
     }
   }
 
@@ -91,13 +93,13 @@ export function DonateModal({ open, onClose }: DonateModalProps) {
                 <Heart className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-lg font-bold">Поддержать проект</h2>
-                <p className="text-xs text-muted-foreground">Криптовалюта</p>
+                <h2 className="text-lg font-bold">{tx("donateTitle")}</h2>
+                <p className="text-xs text-muted-foreground">{tx("donateSubtitle")}</p>
               </div>
             </div>
 
             <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-              Peace Index 180 — это независимый некоммерческий проект, который ежедневно оценивает вероятность наступления мира в течение ближайших 180 дней на основе открытых данных и анализа с помощью искусственного интеллекта. Если вы считаете проект полезным и хотите помочь его развитию, вы можете поддержать его добровольным пожертвованием в криптовалюте. Спасибо за поддержку.
+              {tx("donateDescription")}
             </p>
 
             <div className="mt-5 space-y-3">
@@ -126,7 +128,7 @@ export function DonateModal({ open, onClose }: DonateModalProps) {
                       ) : (
                         <Copy className="h-3.5 w-3.5" />
                       )}
-                      {copied === wallet.symbol ? "Скопировано" : "Копировать"}
+                      {copied === wallet.symbol ? tx("donateCopiedBtn") : tx("donateCopyBtn")}
                     </Button>
                   </div>
                   <code className="mt-2 block break-all rounded-lg bg-background p-2 text-[11px] text-muted-foreground">
@@ -137,13 +139,12 @@ export function DonateModal({ open, onClose }: DonateModalProps) {
             </div>
 
             <div className="mt-5 rounded-xl bg-muted/30 p-4">
-              <p className="text-sm font-medium">Спасибо!</p>
-              
+              <p className="text-sm font-medium">{tx("donateThanks")}</p>
             </div>
 
             <div className="mt-6 flex justify-end">
               <Button onClick={onClose} variant="outline" size="sm">
-                Закрыть
+                {tx("close")}
               </Button>
             </div>
           </motion.div>
@@ -152,4 +153,3 @@ export function DonateModal({ open, onClose }: DonateModalProps) {
     </AnimatePresence>
   );
 }
-

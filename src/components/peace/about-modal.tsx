@@ -4,6 +4,7 @@ import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Activity, Globe, Clock, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useLanguage } from "@/components/peace/language-context";
 
 interface AboutModalProps {
   open: boolean;
@@ -11,6 +12,8 @@ interface AboutModalProps {
 }
 
 export function AboutModal({ open, onClose }: AboutModalProps) {
+  const { tx } = useLanguage();
+
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -56,24 +59,22 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
                 <Activity className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-lg font-bold">О проекте</h2>
-                <p className="text-xs text-muted-foreground">Peace Index 180</p>
+                <h2 className="text-lg font-bold">{tx("aboutTitle")}</h2>
+                <p className="text-xs text-muted-foreground">{tx("aboutSubtitle")}</p>
               </div>
             </div>
 
             <div className="mt-5 space-y-4 text-sm leading-relaxed text-foreground">
               <p>
-                <strong>Индекс Мира 180</strong> — некоммерческий аналитический проект,
-                оценивающий вероятность наступления мира в Украине в течение 180 дней.
+                <strong>Peace Index 180</strong> — {tx("aboutP1")}
               </p>
 
               <div className="flex items-start gap-3 rounded-xl bg-muted/50 p-4">
                 <Globe className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                 <div>
-                  <p className="font-medium">Открытые данные + ИИ</p>
+                  <p className="font-medium">{tx("aboutOpenDataTitle")}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    Анализ 24 маркеров из 6 групп: финансы, законодательство, эскалация,
-                    военные маркеры, российская сторона, политика.
+                    {tx("aboutOpenDataText")}
                   </p>
                 </div>
               </div>
@@ -81,10 +82,9 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
               <div className="flex items-start gap-3 rounded-xl bg-muted/50 p-4">
                 <Clock className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                 <div>
-                  <p className="font-medium">Горизонт прогноза</p>
+                  <p className="font-medium">{tx("aboutHorizonTitle")}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    180 дней. Автообновление ежедневно в 02:00 UTC.
-                    Шкала: -100 (война) → 0 (стагнация) → +100 (мир).
+                    {tx("aboutHorizonText")}
                   </p>
                 </div>
               </div>
@@ -92,10 +92,9 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
               <div className="flex items-start gap-3 rounded-xl bg-muted/50 p-4">
                 <Shield className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                 <div>
-                  <p className="font-medium">Не является официальным прогнозом</p>
+                  <p className="font-medium">{tx("aboutDisclaimerTitle")}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    Проект создан энтузиастом для отслеживания динамики конфликта.
-                    Пользователь сам решает, доверять ли оценке.
+                    {tx("aboutDisclaimerText")}
                   </p>
                 </div>
               </div>
@@ -103,7 +102,7 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
 
             <div className="mt-6 flex justify-end">
               <Button onClick={onClose} variant="outline" size="sm">
-                Закрыть
+                {tx("close")}
               </Button>
             </div>
           </motion.div>
@@ -112,4 +111,3 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
     </AnimatePresence>
   );
 }
-

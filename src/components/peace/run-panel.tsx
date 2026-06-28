@@ -7,6 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Play, Loader2, CheckCircle2, AlertTriangle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { useLanguage } from "@/components/peace/language-context";
 
 export interface JobView {
   running: boolean;
@@ -29,14 +30,8 @@ interface RunPanelProps {
   onTriggered: () => void;
 }
 
-const PHASE_LABEL: Record<string, string> = {
-  analyzing: "ИИ-анализ маркеров (с Google Search)",
-  aggregating: "Агрегация индекса",
-  done: "Готово",
-  error: "Ошибка",
-};
-
 export function RunPanel({ job, totalMarkers, onTriggered }: RunPanelProps) {
+  const { tx, lang } = useLanguage();
   const [triggering, setTriggering] = React.useState(false);
 
   const running = job?.running ?? false;
@@ -46,6 +41,13 @@ export function RunPanel({ job, totalMarkers, onTriggered }: RunPanelProps) {
       ? Math.round(((progress.idx + (progress.phase === "done" ? 1 : 0)) / progress.total) * 100)
       : 0;
 
+  const phaseLabel: Record<string, string> = {
+    analyzing: tx("runPhaseAnalyzing"),
+    aggregating: tx("runPhaseAggregating"),
+    done: tx("runPhaseDone"),
+    error: tx("runPhaseError"),
+  };
+
   async function trigger() {
     setTriggering(true);
     try {
@@ -53,17 +55,17 @@ export function RunPanel({ job, totalMarkers, onTriggered }: RunPanelProps) {
       const data = await res.json();
       if (!res.ok || !data.ok) {
         if (data.reason === "already-running") {
-          toast.info("Пересчёт уже выполняется");
+          toast.info(tx("runPanelAlreadyRunning"));
         } else {
           throw new Error(data.reason || "failed");
         }
       } else {
-        toast.success("Пересчёт запущен в фоне");
+        toast.success(tx("runPanelStarted"));
         onTriggered();
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      toast.error("Не удалось запустить пересчёт: " + msg);
+      toast.error(tx("runPanelError") + ": " + msg);
     } finally {
       setTriggering(false);
     }
@@ -76,10 +78,9 @@ export function RunPanel({ job, totalMarkers, onTriggered }: RunPanelProps) {
     <Card className="p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold">Пересчёт индекса</h3>
+          <h3 className="text-sm font-semibold">{tx("runPanelTitle")}</h3>
           <p className="text-xs text-muted-foreground">
-            ИИ-анализ {totalMarkers} маркеров с Google Search → агрегация.
-            Обычно занимает 2–3 минуты.
+            {tx("runPanelSubtitle").replace("{count}", String(totalMarkers))}
           </p>
         </div>
         <Button onClick={trigger} disabled={running || triggering} className="gap-2">
@@ -88,7 +89,7 @@ export function RunPanel({ job, totalMarkers, onTriggered }: RunPanelProps) {
           ) : (
             <Play className="h-4 w-4" />
           )}
-          {running ? "Идёт пересчёт…" : "Запустить пересчёт"}
+          {running ? tx("runPanelBtnRunning") : tx("runPanelBtnIdle")}
         </Button>
       </div>
 
@@ -97,7 +98,7 @@ export function RunPanel({ job, totalMarkers, onTriggered }: RunPanelProps) {
           <div className="flex items-center justify-between text-xs">
             <span className="flex items-center gap-1.5 font-medium">
               <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600" />
-              {PHASE_LABEL[progress.phase] ?? progress.phase}
+              {phaseLabel[progress.phase] ?? progress.phase}
             </span>
             <span className="text-muted-foreground">
               {progress.idx}/{progress.total} · {progress.current}
@@ -113,18 +114,18 @@ export function RunPanel({ job, totalMarkers, onTriggered }: RunPanelProps) {
             <>
               <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
               <span className="text-rose-600 dark:text-rose-400">
-                Ошибка: {job.lastError}
+                {tx("runLastError")}: {job.lastError}
               </span>
             </>
           ) : (
             <>
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
               <span className="text-muted-foreground">
-                Последний пересчёт завершён
+                {tx("runLastDone")}
               </span>
               {elapsedSec > 0 && (
                 <Badge variant="secondary" className="text-[11px]">
-                  за {elapsedSec}с
+                  {tx("runElapsed").replace("{sec}", String(elapsedSec))}
                 </Badge>
               )}
             </>
@@ -135,7 +136,9 @@ export function RunPanel({ job, totalMarkers, onTriggered }: RunPanelProps) {
       {!running && job?.lastRunDate && !job?.finishedAt && (
         <div className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
           <RefreshCw className="h-3.5 w-3.5" />
-          Последний расчёт: {new Date(job.lastRunDate).toLocaleDateString("ru-RU")}
+          {tx("runLastCalc")}: {new Date(job.lastRunDate).toLocaleDateString(
+            lang === "ru" ? "ru-RU" : "en-US"
+          )}
         </div>
       )}
     </Card>

@@ -330,31 +330,31 @@ export default function Home() {
                         >
                           <div className="border-t border-border p-5">
                             <div className="grid gap-4 text-sm sm:grid-cols-2">
-                              <MethodItem
-                                title="Горизонт прогноза"
-                                text="180 дней. «Мир» = прекращение огня, заморозка конфликта или мирный договор. Шкала: -100 (война) → 0 (стагнация) → +100 (мир)."
-                              />
-                              <MethodItem
-                                title="Маркеры и веса"
-                                text="24 маркера в 6 группах. Финансовые и законодательные маркеры имеют максимальный вес (до 12). Политические — минимальный (до 3)."
-                              />
-                              <MethodItem
-                                title="Дуговой спидометр"
-                                text="Цветные сегменты = вклады групп маркеров. Левая сторона = факторы войны, правая = факторы мира. Длина сегмента ∝ вклад группы."
-                              />
-                              <MethodItem
-                                title="Антигаллюцинации"
-                                text="ИИ обязан ссылаться на URL источников. На сервере факты фильтруются: остаются только с URL из собранных данных."
-                              />
-                              <MethodItem
-                                title="Градиент давности"
-                                text="Если по маркеру нет данных >14 дней, уверенность падает до LOW. Для тяжёлых маркеров (вес >8) индекс корректируется к нейтрали."
-                              />
-                              <MethodItem
-                                title="Источники данных"
-                                text="IMF, MIGA, DFC, EBRD, Kiel, ISW, ACLED, Oryx, Verkhovna Rada, Prozorro, Eur-Lex, Kremlin, Reuters/AP, OSINT, Google News RSS."
-                              />
-                            </div>
+  <MethodItem
+    title={tx("methodologyForecastHorizon")}
+    text={tx("methodologyForecastHorizonText")}
+  />
+  <MethodItem
+    title={tx("methodologyMarkersWeights")}
+    text={tx("methodologyMarkersWeightsText")}
+  />
+  <MethodItem
+    title={tx("methodologyArcGauge")}
+    text={tx("methodologyArcGaugeText")}
+  />
+  <MethodItem
+    title={tx("methodologyAntiHallucinationMain")}
+    text={tx("methodologyAntiHallucinationMainText")}
+  />
+  <MethodItem
+    title={tx("methodologyRecencyGradient")}
+    text={tx("methodologyRecencyGradientText")}
+  />
+  <MethodItem
+    title={tx("methodologyDataSources")}
+    text={tx("methodologyDataSourcesText")}
+  />
+</div>
                           </div>
                         </motion.div>
                       </CollapsibleContent>

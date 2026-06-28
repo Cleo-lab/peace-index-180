@@ -4,6 +4,7 @@ import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, Info, BookOpen, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/components/peace/language-context";
 
 interface BurgerMenuProps {
   onAbout: () => void;
@@ -12,6 +13,7 @@ interface BurgerMenuProps {
 }
 
 export function BurgerMenu({ onAbout, onMethodology, onDonate }: BurgerMenuProps) {
+  const { tx } = useLanguage();
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
 
@@ -32,9 +34,9 @@ export function BurgerMenu({ onAbout, onMethodology, onDonate }: BurgerMenuProps
   }, [open]);
 
   const items = [
-    { label: "О проекте", icon: Info, onClick: () => { onAbout(); setOpen(false); } },
-    { label: "Методология", icon: BookOpen, onClick: () => { onMethodology(); setOpen(false); } },
-    { label: "Поддержать", icon: Heart, onClick: () => { onDonate(); setOpen(false); }, accent: true },
+    { label: tx("menuAbout"), icon: Info, onClick: () => { onAbout(); setOpen(false); } },
+    { label: tx("menuMethodology"), icon: BookOpen, onClick: () => { onMethodology(); setOpen(false); } },
+    { label: tx("menuDonate"), icon: Heart, onClick: () => { onDonate(); setOpen(false); }, accent: true },
   ];
 
   return (
@@ -47,7 +49,7 @@ export function BurgerMenu({ onAbout, onMethodology, onDonate }: BurgerMenuProps
             ? "bg-muted text-foreground"
             : "text-muted-foreground hover:bg-muted hover:text-foreground"
         )}
-        aria-label="Меню"
+        aria-label={tx("menuTitle")}
       >
         <AnimatePresence mode="wait">
           {open ? (

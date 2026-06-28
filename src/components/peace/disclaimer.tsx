@@ -1,15 +1,13 @@
 "use client";
 
 import * as React from "react";
+import { useLanguage } from "@/components/peace/language-context";
 
-/// Компактный дисклеймер — используется только в футере (один экземпляр).
 export function Disclaimer() {
+  const { tx } = useLanguage();
   return (
     <p className="text-[11px] leading-relaxed text-muted-foreground">
-      Приложение оценивает вероятность наступления мира на основе открытых
-      данных с помощью ИИ. Оно не претендует на абсолютную точность и не
-      является официальным прогнозом. Пользователь сам решает, доверять ли
-      этой оценке.
+      {tx("disclaimerText")}
     </p>
   );
 }

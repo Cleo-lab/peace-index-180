@@ -4,46 +4,49 @@ import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, BookOpen, Target, Scale, Eye, Database, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useLanguage } from "@/components/peace/language-context";
 
 interface MethodologyModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-const BLOCKS = [
-  {
-    icon: Target,
-    title: "Горизонт прогноза",
-    text: "180 дней. «Мир» = прекращение огня, заморозка конфликта или мирный договор. Шкала: -100 (война) → 0 (стагнация) → +100 (мир).",
-  },
-  {
-    icon: Scale,
-    title: "Маркеры и веса",
-    text: "24 маркера в 6 группах. Финансовые и законодательные маркеры имеют максимальный вес (до 12). Политические — минимальный (до 3).",
-  },
-  {
-    icon: Eye,
-    title: "Дуговой спидометр",
-    text: "Цветные сегменты = вклады групп маркеров. Левая сторона = факторы войны, правая = факторы мира. Длина сегмента ∝ вклад группы.",
-  },
-  {
-    icon: Database,
-    title: "Антигаллюцинации",
-    text: "ИИ обязан ссылаться на URL источников. На сервере факты фильтруются: остаются только с URL из собранных данных.",
-  },
-  {
-    icon: Clock,
-    title: "Градиент давности",
-    text: "Если по маркеру нет данных >14 дней, уверенность падает до LOW. Для тяжёлых маркеров (вес >8) индекс корректируется к нейтрали.",
-  },
-  {
-    icon: BookOpen,
-    title: "Источники данных",
-    text: "IMF, MIGA, DFC, EBRD, Kiel, ISW, ACLED, Oryx, Verkhovna Rada, Prozorro, Eur-Lex, Kremlin, Reuters/AP, OSINT, Google News RSS.",
-  },
-];
-
 export function MethodologyModal({ open, onClose }: MethodologyModalProps) {
+  const { tx } = useLanguage();
+
+  const BLOCKS = [
+    {
+      icon: Target,
+      title: tx("methodologyHorizon"),
+      text: tx("methodologyHorizonText"),
+    },
+    {
+      icon: Scale,
+      title: tx("methodologyMarkers"),
+      text: tx("methodologyMarkersText"),
+    },
+    {
+      icon: Eye,
+      title: tx("methodologyGauge"),
+      text: tx("methodologyGaugeText"),
+    },
+    {
+      icon: Database,
+      title: tx("methodologyAntiHallucination"),
+      text: tx("methodologyAntiHallucinationText"),
+    },
+    {
+      icon: Clock,
+      title: tx("methodologyGradient"),
+      text: tx("methodologyGradientText"),
+    },
+    {
+      icon: BookOpen,
+      title: tx("methodologySources"),
+      text: tx("methodologySourcesText"),
+    },
+  ];
+
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -89,8 +92,8 @@ export function MethodologyModal({ open, onClose }: MethodologyModalProps) {
                 <BookOpen className="h-5 w-5 text-muted-foreground" />
               </div>
               <div>
-                <h2 className="text-lg font-bold">Методология</h2>
-                <p className="text-xs text-muted-foreground">Как считается индекс</p>
+                <h2 className="text-lg font-bold">{tx("methodologyModalTitle")}</h2>
+                <p className="text-xs text-muted-foreground">{tx("methodologyModalSubtitle")}</p>
               </div>
             </div>
 
@@ -113,7 +116,7 @@ export function MethodologyModal({ open, onClose }: MethodologyModalProps) {
 
             <div className="mt-6 flex justify-end">
               <Button onClick={onClose} variant="outline" size="sm">
-                Закрыть
+                {tx("close")}
               </Button>
             </div>
           </motion.div>
@@ -122,4 +125,3 @@ export function MethodologyModal({ open, onClose }: MethodologyModalProps) {
     </AnimatePresence>
   );
 }
-

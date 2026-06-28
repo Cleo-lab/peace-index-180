@@ -14,6 +14,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { probabilityColor } from "@/lib/colors";
+import { useLanguage } from "@/components/peace/language-context";
 
 interface HistoryPoint {
   date: string;
@@ -27,6 +28,7 @@ interface HistoryChartProps {
 }
 
 export function HistoryChart({ points, current }: HistoryChartProps) {
+  const { tx } = useLanguage();
   const [days, setDays] = React.useState<number>(90);
 
   const filtered = React.useMemo(() => {
@@ -47,9 +49,9 @@ export function HistoryChart({ points, current }: HistoryChartProps) {
     <Card className="p-4 sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold">История индекса</h3>
+          <h3 className="text-base font-semibold">{tx("historyTitle")}</h3>
           <p className="text-xs text-muted-foreground">
-            Динамика итоговой вероятности мира во времени
+            {tx("historySubtitle")}
           </p>
         </div>
         <ToggleGroup
@@ -60,20 +62,20 @@ export function HistoryChart({ points, current }: HistoryChartProps) {
           variant="outline"
         >
           <ToggleGroupItem value="30" className="text-xs">
-            30д
+            30{tx("historyDays")}
           </ToggleGroupItem>
           <ToggleGroupItem value="60" className="text-xs">
-            60д
+            60{tx("historyDays")}
           </ToggleGroupItem>
           <ToggleGroupItem value="90" className="text-xs">
-            90д
+            90{tx("historyDays")}
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
 
       {data.length === 0 ? (
         <div className="flex h-[220px] items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
-          Недостаточно данных для построения графика. Запустите анализ несколько дней подряд.
+          {tx("historyNoData")}
         </div>
       ) : (
         <div className="h-[220px] w-full">
@@ -106,7 +108,7 @@ export function HistoryChart({ points, current }: HistoryChartProps) {
                   color: "var(--popover-foreground)",
                 }}
                 labelStyle={{ color: "var(--muted-foreground)", fontSize: 11 }}
-                formatter={(v: number) => [`${v}%`, "Вероятность"]}
+                formatter={(v: number) => [`${v}%`, tx("historyTooltipLabel")]}
               />
               <ReferenceLine y={50} stroke="var(--border)" strokeDasharray="2 4" />
               <Line

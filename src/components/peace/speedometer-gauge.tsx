@@ -4,33 +4,22 @@ import * as React from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { groupColor } from "@/lib/colors";
+import { useTheme } from "next-themes";
+import { useLanguage } from "@/components/peace/language-context";
+
 export interface SegmentDef {
   groupKey: string;
   label: string;
+  labelEn?: string;
   contribution: number;
   avgProbability: number;
 }
 
 interface SpeedometerGaugeProps {
-  value: number; // -100..+100
+  value: number;
   segments: SegmentDef[];
   className?: string;
-  /** Тёмная тема (для виджета на чёрном фоне) */
-  dark?: boolean;
 }
-
-
-
-// ===== Геометрия: дуга 270° с зазором 90° снизу =====
-// Система polar: 0° = верх (12:00), 90° = право (3:00), 180° = низ (6:00), 270° = лево (9:00)
-//
-// На рисунке:
-//   0    = верх (12:00)          → 0°   (или 360°)
-//   -100 = левый низ (~7:30)     → 225°
-//   +100 = правый низ (~4:30)    → 135°  но в arcPath идём по часовой: 225°→360°→495°(=135°+360°)
-//
-// Дуга по часовой: от 225° через 360°(верх) к 495°
-// Зазор снизу: от 135° до 225° (90°)
 
 const CX = 200;
 const CY = 200;
@@ -39,19 +28,17 @@ const STROKE = 24;
 const VIEW_W = 400;
 const VIEW_H = 400;
 
-const ARC_START = 225;   // -100 (левый низ, ~7:30)
-const ARC_END = 495;     // +100 (правый низ, ~4:30) = 135° + 360°
-const ARC_MID = 360;     // 0 (верх, 12:00)
+const ARC_START = 225;
+const ARC_END = 495;
+const ARC_MID = 360;
 
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
-  // 0° = верх, по часовой
   const rad = ((angleDeg - 90) * Math.PI) / 180;
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 }
 
 function valueToAngle(v: number): number {
   const normalized = Math.max(-100, Math.min(100, v));
-  // -100..+100 → 225°..495° (диапазон 270°)
   return ARC_START + ((normalized + 100) / 200) * (ARC_END - ARC_START);
 }
 
@@ -85,29 +72,31 @@ function useCountUp(target: number, duration = 1100) {
   return val;
 }
 
-function getTierLabel(value: number): string {
-  if (value <= -60) return "Война";
-  if (value <= -30) return "Эскалация";
-  if (value <= -10) return "Напряжение";
-  if (value <= 10) return "Стагнация";
-  if (value <= 30) return "Деэскалация";
-  if (value <= 60) return "Переговоры";
-  return "Мир";
+function getTierLabel(value: number, lang: string): string {
+  if (value <= -60) return lang === "en" ? "War" : "Война";
+  if (value <= -30) return lang === "en" ? "Escalation" : "Эскалация";
+  if (value <= -10) return lang === "en" ? "Tension" : "Напряжение";
+  if (value <= 10) return lang === "en" ? "Stagnation" : "Стагнация";
+  if (value <= 30) return lang === "en" ? "De-escalation" : "Деэскалация";
+  if (value <= 60) return lang === "en" ? "Negotiations" : "Переговоры";
+  return lang === "en" ? "Peace" : "Мир";
 }
 
 export function SpeedometerGauge({
   value,
   segments,
   className,
-  dark = false,
 }: SpeedometerGaugeProps) {
+  const { resolvedTheme } = useTheme();
+  const dark = resolvedTheme === "dark";
+  const { lang } = useLanguage();
+
   const clampedValue = Math.max(-100, Math.min(100, value));
   const animatedValue = useCountUp(clampedValue);
   const displayValue = Math.round(animatedValue);
   const formatted = displayValue > 0 ? `+${displayValue}` : `${displayValue}`;
-  const tierLabel = getTierLabel(displayValue);
+  const tierLabel = getTierLabel(displayValue, lang);
 
-  // Цвета для тёмной/светлой темы
   const trackColor = dark ? "rgba(255,255,255,0.15)" : "#e5e5e5";
   const trackOpacity = dark ? 1 : 0.3;
   const tickColor = dark ? "rgba(255,255,255,0.5)" : "#999";
@@ -117,7 +106,6 @@ export function SpeedometerGauge({
   const centerColor = dark ? "#fff" : "#1a1a2e";
   const tierColor = dark ? "rgba(255,255,255,0.6)" : "#666";
 
-  // ===== Разделяем сегменты =====
   const positiveSegments = segments.filter((s) => s.contribution > 0);
   const negativeSegments = segments.filter((s) => s.contribution < 0);
 
@@ -125,51 +113,50 @@ export function SpeedometerGauge({
   const totalNegative = Math.abs(negativeSegments.reduce((s, x) => s + x.contribution, 0));
   const totalAbs = totalPositive + totalNegative;
 
-  // ===== Формируем цветные сегменты дуги =====
-  // Левая сторона (-100..0): от 225° до 360° (135° диапазон)
-  const leftSegments: Array<{ start: number; end: number; color: string; label: string }> = [];
+  // ===== Левая сторона (-100..0) =====
+  const leftSegments: Array<{ start: number; end: number; color: string; label: string; labelEn?: string }> = [];
   if (totalNegative > 0) {
-    let cursor = ARC_MID; // 360° (верх, 0)
+    let cursor = ARC_MID;
     for (const seg of negativeSegments) {
       const portion = Math.abs(seg.contribution) / totalNegative;
-      const angleSpan = portion * 135; // 135° = левая половина дуги
+      const angleSpan = portion * 135;
       const end = cursor - angleSpan;
       leftSegments.push({
         start: Math.max(end, ARC_START),
         end: cursor,
         color: groupColor(seg.groupKey),
         label: seg.label,
+        labelEn: seg.labelEn,
       });
       cursor = end;
     }
   }
 
-  // Правая сторона (0..+100): от 360° до 495° (135° диапазон)
-  const rightSegments: Array<{ start: number; end: number; color: string; label: string }> = [];
+  // ===== Правая сторона (0..+100) =====
+  const rightSegments: Array<{ start: number; end: number; color: string; label: string; labelEn?: string }> = [];
   if (totalPositive > 0) {
-    let cursor = ARC_MID; // 360° (верх, 0)
+    let cursor = ARC_MID;
     for (const seg of positiveSegments) {
       const portion = seg.contribution / totalPositive;
-      const angleSpan = portion * 135; // 135° = правая половина дуги
+      const angleSpan = portion * 135;
       const end = cursor + angleSpan;
       rightSegments.push({
         start: cursor,
         end: Math.min(end, ARC_END),
         color: groupColor(seg.groupKey),
         label: seg.label,
+        labelEn: seg.labelEn,
       });
       cursor = end;
     }
   }
 
-  // ===== Стрелка =====
   const needleAngle = valueToAngle(animatedValue);
   const needleLen = R - STROKE - 10;
   const needleEnd = polar(CX, CY, needleLen, needleAngle);
   const needleBase1 = polar(CX, CY, 8, needleAngle + 90);
   const needleBase2 = polar(CX, CY, 8, needleAngle - 90);
 
-  // ===== Тики и метки =====
   const majorTicks = [-100, -75, -50, -25, 0, 25, 50, 75, 100];
   const minorTicks: number[] = [];
   for (let t = -95; t <= 95; t += 5) {
@@ -195,7 +182,7 @@ export function SpeedometerGauge({
             opacity={trackOpacity}
           />
 
-          {/* Левая сторона: отрицательные сегменты (-100..0) */}
+          {/* Левая сторона: отрицательные сегменты */}
           {leftSegments.map((seg, i) => (
             <motion.path
               key={`left-${i}`}
@@ -208,11 +195,11 @@ export function SpeedometerGauge({
               animate={{ pathLength: 1, opacity: 1 }}
               transition={{ duration: 0.6, delay: 0.1 + i * 0.08 }}
             >
-              <title>{seg.label}</title>
+              <title>{lang === "en" && seg.labelEn ? seg.labelEn : seg.label}</title>
             </motion.path>
           ))}
 
-          {/* Правая сторона: положительные сегменты (0..+100) */}
+          {/* Правая сторона: положительные сегменты */}
           {rightSegments.map((seg, i) => (
             <motion.path
               key={`right-${i}`}
@@ -225,7 +212,7 @@ export function SpeedometerGauge({
               animate={{ pathLength: 1, opacity: 1 }}
               transition={{ duration: 0.6, delay: 0.1 + i * 0.08 }}
             >
-              <title>{seg.label}</title>
+              <title>{lang === "en" && seg.labelEn ? seg.labelEn : seg.label}</title>
             </motion.path>
           ))}
 
@@ -317,7 +304,7 @@ export function SpeedometerGauge({
             y={CY + 88}
             textAnchor="middle"
             dominantBaseline="middle"
-            fontSize="14"
+            fontSize="25"
             fontWeight="600"
             fill={tierColor}
             letterSpacing="0.05em"
@@ -345,7 +332,7 @@ export function SpeedometerGauge({
                   style={{ backgroundColor: color }}
                 />
                 <span className={cn("flex-1 leading-tight", dark ? "text-white/60" : "text-muted-foreground")}>
-                  {seg.label}
+                  {lang === "en" && seg.labelEn ? seg.labelEn : seg.label}
                 </span>
                 <span
                   className="font-mono font-semibold tabular-nums"
@@ -363,4 +350,3 @@ export function SpeedometerGauge({
     </div>
   );
 }
-

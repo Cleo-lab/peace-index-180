@@ -4,10 +4,11 @@
 import * as React from "react";
 import { motion } from "framer-motion";
 import { SpeedometerGauge, type SegmentDef } from "@/components/peace/speedometer-gauge";
+import { LanguageProvider, useLanguage } from "@/components/peace/language-context";
+import { LanguageToggle } from "@/components/peace/language-toggle";
 import { probabilityLabelRu } from "@/lib/colors";
 import { ArrowUpRight, Share2, X } from "lucide-react";
 
-// Тот же порядок групп, что и на основной странице
 const GROUP_ORDER = ["finance", "law", "escalation", "ukraine_military", "russia", "politics"] as const;
 
 interface WidgetData {
@@ -19,8 +20,17 @@ interface WidgetData {
 }
 
 export default function WidgetPage() {
+  return (
+    <LanguageProvider>
+      <WidgetContent />
+    </LanguageProvider>
+  );
+}
+
+function WidgetContent() {
   const [data, setData] = React.useState<WidgetData | null>(null);
   const [showRationale, setShowRationale] = React.useState(false);
+  const { lang } = useLanguage();
 
   React.useEffect(() => {
     fetch("/api/status", { cache: "no-store" })
@@ -28,7 +38,6 @@ export default function WidgetPage() {
       .then((s) => {
         if (!s.aggregate) return;
 
-        // Формируем segments точно так же, как на основной странице (page.tsx)
         const markers = s.markers ?? [];
         const groups = s.groups ?? [];
         const calcDate = s.calcDate ?? "";
@@ -84,6 +93,8 @@ export default function WidgetPage() {
     );
   }
 
+  const rationaleText = lang === "ru" && data.summaryRu ? data.summaryRu : data.summaryEn;
+
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-black px-4">
       <div className="w-full max-w-[320px]">
@@ -94,7 +105,8 @@ export default function WidgetPage() {
         />
       </div>
 
-      <div className="mt-6 flex gap-3">
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+        <LanguageToggle variant="dark" />
         <button
           onClick={() => setShowRationale(true)}
           className="rounded-full bg-white/10 px-5 py-2.5 text-sm text-white backdrop-blur-sm transition hover:bg-white/20"
@@ -118,7 +130,7 @@ export default function WidgetPage() {
           </button>
           <h3 className="mt-8 text-lg font-semibold text-white">Обоснование оценки</h3>
           <p className="mt-4 flex-1 overflow-y-auto text-sm leading-relaxed text-white/80">
-            {data.summaryRu || data.summaryEn}
+            {rationaleText}
           </p>
           <a
             href="https://peace-index-180.vercel.app/"
@@ -135,7 +147,7 @@ export default function WidgetPage() {
   );
 }
 
-// ShareButton остаётся без изменений...
+// ShareButton остаётся без изменений
 function ShareButton({ value, calcDate }: { value: number; calcDate: string }) {
   const [sharing, setSharing] = React.useState(false);
 

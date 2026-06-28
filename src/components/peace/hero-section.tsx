@@ -6,13 +6,11 @@ import {
   SpeedometerGauge,
   type SegmentDef,
 } from "@/components/peace/speedometer-gauge";
-import { Button } from "@/components/ui/button";
+import { useLanguage } from "@/components/peace/language-context";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   RefreshCw,
-  Languages,
-  Loader2,
   CalendarDays,
   Database,
   Clock,
@@ -20,8 +18,7 @@ import {
   Shield,
   Minus,
 } from "lucide-react";
-import { probabilityColor, probabilityTier, probabilityLabelRu } from "@/lib/colors";
-import { toast } from "sonner";
+import { probabilityColor, probabilityTier } from "@/lib/colors";
 
 export interface HeroJobView {
   running: boolean;
@@ -48,17 +45,18 @@ interface HeroSectionProps {
   job: HeroJobView | null;
   onRefresh: () => void;
   refreshTick: number;
-  /// Сегменты для спидометра (вклады групп).
   segments: SegmentDef[];
 }
 
-const PHASE_LABEL: Record<string, string> = {
-  analyzing: "ИИ-анализ маркеров (с Google News RSS)",
-  aggregating: "Агрегация индекса",
-  done: "Готово",
-  error: "Ошибка",
-};
-
+function probabilityLabel(value: number, lang: string): string {
+  if (value <= -60) return lang === "en" ? "War" : "Война";
+  if (value <= -30) return lang === "en" ? "Escalation" : "Эскалация";
+  if (value <= -10) return lang === "en" ? "Tension" : "Напряжение";
+  if (value <= 10) return lang === "en" ? "Stagnation" : "Стагнация";
+  if (value <= 30) return lang === "en" ? "De-escalation" : "Деэскалация";
+  if (value <= 60) return lang === "en" ? "Negotiations" : "Переговоры";
+  return lang === "en" ? "Peace" : "Мир";
+}
 /// Иконка для текущего тира
 function TierIcon({ p }: { p: number }) {
   const tier = probabilityTier(p);
@@ -83,6 +81,7 @@ export function HeroSection({
   refreshTick,
   segments,
 }: HeroSectionProps) {
+  const { lang, tx } = useLanguage();
   const color = probabilityColor(totalProbability);
   const tier = probabilityTier(totalProbability);
   const running = job?.running ?? false;
@@ -92,43 +91,9 @@ export function HeroSection({
       ? Math.round(((progress.idx + (progress.phase === "done" ? 1 : 0)) / progress.total) * 100)
       : 0;
 
-  const [translating, setTranslating] = React.useState(false);
-  const [ruText, setRuText] = React.useState<string | null>(summaryRu);
-  const [showRu, setShowRu] = React.useState<boolean>(!!summaryRu);
+  const displaySummary = lang === "ru" && summaryRu ? summaryRu : summaryEn;
+  const summaryLabel = lang === "ru" && summaryRu ? tx("summaryLabelRu") : tx("summaryLabelEn");
 
-  React.useEffect(() => {
-    setRuText(summaryRu);
-    setShowRu(!!summaryRu);
-  }, [summaryRu, totalProbability, calcDate]);
-
-  async function translate() {
-    if (ruText) {
-      setShowRu((s) => !s);
-      return;
-    }
-    setTranslating(true);
-    try {
-      const res = await fetch("/api/translate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "aggregate", calcDate }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || "failed");
-      setRuText(data.text);
-      setShowRu(true);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error("Не удалось перевести: " + msg);
-    } finally {
-      setTranslating(false);
-    }
-  }
-
-  const lastRunDate = job?.lastRunDate ?? calcDate;
-  const elapsedSec = job?.elapsedMs ? Math.round(job.elapsedMs / 1000) : null;
-
-  // Форматируем число со знаком
   const formattedScore = totalProbability > 0 ? `+${totalProbability}` : `${totalProbability}`;
 
   return (
@@ -138,7 +103,7 @@ export function HeroSection({
       transition={{ duration: 0.5, ease: "easeOut" }}
       className="relative overflow-hidden rounded-3xl border border-border bg-card"
     >
-      {/* Градиентный фон, окрашенный вероятностью */}
+      {/* градиентный фон */}
       <div
         className="pointer-events-none absolute inset-0"
         style={{
@@ -151,63 +116,42 @@ export function HeroSection({
       />
 
       <div className="relative grid gap-6 p-6 sm:p-8 lg:grid-cols-2 lg:gap-8 lg:p-10">
-        {/* Левая часть — круговой спидометр с сегментами-вкладами */}
+        {/* Левая часть — спидометр */}
         <div className="flex flex-col items-center justify-center">
-          <SpeedometerGauge 
-            value={totalProbability} 
-            segments={segments} 
-          />
-          
-          
+          <SpeedometerGauge value={totalProbability} segments={segments} />
         </div>
 
-        {/* Правая часть — summary + meta + actions */}
+        {/* Правая часть */}
         <div className="flex flex-col justify-center">
           <div className="flex items-center">
-            
-            <span 
+            <span
               className="text-xs font-semibold uppercase tracking-wider"
               style={{ color }}
             >
-              {probabilityLabelRu(totalProbability)}
+              {probabilityLabel(totalProbability, lang)}
             </span>
           </div>
 
           <h2 className="mt-2 text-2xl font-bold leading-tight sm:text-3xl">
             {formattedScore}{" "}
             <span className="text-base font-medium text-muted-foreground">
-              — динамика мира/войны за 180 дней
+              {tx("heroSubtitle")}
             </span>
           </h2>
 
           <p className="mt-1 text-xs text-muted-foreground">
-            Круговой индикатор: -100 - 0 = война, 0 = стагнация, 0 + 100 = мир.
-            Каждый цветной сегмент — вклад группы маркеров.
+            {tx("heroDescription")}
           </p>
 
           {/* Summary */}
           <div className="mt-4 rounded-2xl border border-border/60 bg-background/50 p-4 backdrop-blur-sm">
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2">
               <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                {showRu && ruText ? "Обоснование · RU" : "Обоснование · EN"}
+                {summaryLabel}
               </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1.5 px-2 text-xs"
-                onClick={translate}
-                disabled={translating}
-              >
-                {translating ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Languages className="h-3.5 w-3.5" />
-                )}
-                {ruText ? (showRu ? "Показать EN" : "Показать RU") : "Перевести на RU"}
-              </Button>
             </div>
             <p className="text-justify text-sm leading-relaxed text-foreground">
-              {showRu && ruText ? ruText : summaryEn}
+              {displaySummary}
             </p>
           </div>
 
@@ -216,23 +160,20 @@ export function HeroSection({
             {calcDate && (
               <Badge variant="outline" className="gap-1.5 rounded-full">
                 <CalendarDays className="h-3 w-3" />
-                {new Date(calcDate).toLocaleDateString("ru-RU", {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })}
+                {new Date(calcDate).toLocaleDateString(
+                  lang === "ru" ? "ru-RU" : "en-US",
+                  { day: "numeric", month: "long", year: "numeric" }
+                )}
               </Badge>
             )}
             <Badge variant="outline" className="gap-1.5 rounded-full">
               <Database className="h-3 w-3" />
-              {markerCount}/{totalMarkers} маркеров
+              {markerCount}/{totalMarkers} {tx("markersCount")}
             </Badge>
             <Badge variant="outline" className="gap-1.5 rounded-full">
               <Clock className="h-3 w-3" />
-              горизонт 180 дней
+              {tx("horizon")}
             </Badge>
-            {/* Индикатор тира */}
-            
           </div>
 
           {/* Прогресс пересчёта */}
@@ -240,8 +181,11 @@ export function HeroSection({
             <div className="mt-4 space-y-1.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1.5 font-medium">
-                  <Loader2 className="h-3 w-3 animate-spin" style={{ color }} />
-                  {PHASE_LABEL[progress.phase] ?? progress.phase}
+                  <RefreshCw className="h-3 w-3 animate-spin" style={{ color }} />
+                  {progress.phase === "analyzing" && tx("phaseAnalyzing")}
+                  {progress.phase === "aggregating" && tx("phaseAggregating")}
+                  {progress.phase === "done" && tx("phaseDone")}
+                  {progress.phase === "error" && tx("phaseError")}
                 </span>
                 <span className="text-muted-foreground">
                   {progress.current} · {progress.idx}/{progress.total}

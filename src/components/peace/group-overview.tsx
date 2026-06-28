@@ -6,10 +6,12 @@ import { ChevronDown } from "lucide-react";
 import { groupColor, probabilityColor } from "@/lib/colors";
 import { cn } from "@/lib/utils";
 import { MarkerCard, type MarkerView } from "@/components/peace/marker-card";
+import { useLanguage } from "@/components/peace/language-context";
 
 export interface GroupRow {
   key: string;
   labelRu: string;
+  labelEn?: string;
   avg: number;
   weight: number;
   count: number;
@@ -31,6 +33,7 @@ const TIER_LABEL: Record<string, string> = {
 };
 
 export function GroupOverview({ groups, openKeys, onToggle }: GroupOverviewProps) {
+const { lang, tx } = useLanguage();
   const maxWeight = Math.max(...groups.map((g) => g.weight), 1);
 
   return (
@@ -39,6 +42,7 @@ export function GroupOverview({ groups, openKeys, onToggle }: GroupOverviewProps
         const color = groupColor(g.key);
         const isOpen = openKeys.includes(g.key);
         const probColor = probabilityColor(g.avg);
+        const label = lang === "en" && g.labelEn ? g.labelEn : g.labelRu;
         return (
           <motion.div
             key={g.key}
@@ -72,7 +76,7 @@ export function GroupOverview({ groups, openKeys, onToggle }: GroupOverviewProps
                     style={{ backgroundColor: color }}
                   />
                   <p className="truncate text-sm font-semibold leading-tight">
-                    {g.labelRu}
+                    {label}
                   </p>
                   <span className="text-[11px] text-muted-foreground">
                     {g.count} марк. · вес {g.weight}

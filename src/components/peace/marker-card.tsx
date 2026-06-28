@@ -23,6 +23,7 @@ import {
 } from "@/lib/colors";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useLanguage } from "@/components/peace/language-context"; 
 
 export interface MarkerView {
   markerId: string;
@@ -46,6 +47,7 @@ interface MarkerCardProps {
 }
 
 export function MarkerCard({ marker, calcDate }: MarkerCardProps) {
+  const { lang, tx, t } = useLanguage();  // ← NEW
   const [open, setOpen] = React.useState(false);
   const [translating, setTranslating] = React.useState(false);
   const [ruText, setRuText] = React.useState<string | null>(marker.rationaleRu);
@@ -54,9 +56,12 @@ export function MarkerCard({ marker, calcDate }: MarkerCardProps) {
     setRuText(marker.rationaleRu);
   }, [marker.rationaleRu, marker.markerId]);
 
-  const pColor = probabilityColor(marker.probability);
-  const t = trendLabelRu(marker.trend);
+    const pColor = probabilityColor(marker.probability);
+  const trend = trendLabelRu(marker.trend);  // ← переименовано
   const confColor = confidenceColor(marker.confidence);
+  // Выбираем название маркера по языку
+  const displayName = lang === "en" ? marker.name : marker.nameRu;
+  const displayGroup = lang === "en" ? marker.groupLabelRu : marker.groupLabelRu;
 
   async function handleTranslate() {
     if (ruText) {
@@ -104,13 +109,15 @@ export function MarkerCard({ marker, calcDate }: MarkerCardProps) {
                   {marker.code}
                 </Badge>
                 <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  вес {marker.weight}
-                </span>
+  {tx("weight")} {marker.weight}
+</span>
               </div>
               <h4 className="mt-1 truncate text-sm font-semibold leading-tight">
-                {marker.nameRu}
+                {displayName}
               </h4>
-              <p className="truncate text-xs text-muted-foreground">{marker.name}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                {lang === "en" ? marker.nameRu : marker.name}
+              </p>
             </div>
 
             {/* Вероятность */}
@@ -134,8 +141,8 @@ export function MarkerCard({ marker, calcDate }: MarkerCardProps) {
               className="gap-1 text-[11px]"
               style={{ color: trendColor(marker.trend) }}
             >
-              <span aria-hidden>{t.icon}</span>
-              {t.label}
+              <span aria-hidden>{trend.icon}</span>
+              {trend.label}
             </Badge>
             <Badge
               variant="secondary"
@@ -143,7 +150,7 @@ export function MarkerCard({ marker, calcDate }: MarkerCardProps) {
               style={{ color: confColor }}
             >
               <ShieldCheck className="h-3 w-3" aria-hidden />
-              Уверенность: {confidenceLabelRu(marker.confidence)}
+              {tx("confidence")}: {confidenceLabelRu(marker.confidence)}
             </Badge>
           </div>
 
@@ -156,7 +163,7 @@ export function MarkerCard({ marker, calcDate }: MarkerCardProps) {
                 ) : (
                   <ChevronRight className="h-3.5 w-3.5" />
                 )}
-                Обоснование {ruText ? "(EN/RU)" : "(EN)"}
+                {tx("rationale")} {ruText ? "(EN/RU)" : "(EN)"}
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-2 space-y-3">
@@ -172,8 +179,8 @@ export function MarkerCard({ marker, calcDate }: MarkerCardProps) {
               {ruText ? (
                 <div className="rounded-md border border-border/70 bg-muted/40 p-3">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                    Русский
-                  </p>
+  {tx("russian")}
+</p>
                   <p className="mt-1 text-sm leading-relaxed text-foreground">
                     {ruText}
                   </p>
@@ -191,7 +198,7 @@ export function MarkerCard({ marker, calcDate }: MarkerCardProps) {
                   ) : (
                     <Languages className="h-3.5 w-3.5" />
                   )}
-                  Перевести на русский
+                  {tx("translateToRussian")}
                 </Button>
               )}
 
@@ -200,7 +207,7 @@ export function MarkerCard({ marker, calcDate }: MarkerCardProps) {
                 <div>
                   <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     <ShieldCheck className="h-3.5 w-3.5" />
-                    Ключевые факты (с источниками)
+                    {tx("keyFacts")}
                   </p>
                   <ul className="max-h-48 space-y-2 overflow-y-auto pr-1">
                     {marker.keyFacts.map((f, i) => (
@@ -214,7 +221,7 @@ export function MarkerCard({ marker, calcDate }: MarkerCardProps) {
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-0.5 align-baseline text-[11px] font-medium text-emerald-600 underline-offset-2 hover:underline dark:text-emerald-400"
                           >
-                            источник
+                            {tx("source")}
                             <ExternalLink className="h-3 w-3" />
                           </a>
                         </span>
@@ -226,7 +233,7 @@ export function MarkerCard({ marker, calcDate }: MarkerCardProps) {
 
               {!marker.keyFacts.length && (
                 <p className="text-xs italic text-muted-foreground">
-                  Модель не предоставила верифицируемых фактов с URL из входных данных.
+                  {tx("noVerifiedFacts")}
                 </p>
               )}
             </CollapsibleContent>

@@ -14,6 +14,8 @@ import { BurgerMenu } from "@/components/peace/burger-menu";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LanguageToggle } from "@/components/peace/language-toggle";
+import { useLanguage } from "@/components/peace/language-context";
 import {
   Collapsible,
   CollapsibleContent,
@@ -66,6 +68,7 @@ export default function Home() {
   const [mounted, setMounted] = React.useState(false);
   const [openGroups, setOpenGroups] = React.useState<string[]>([]);
   const [showMethodology, setShowMethodology] = React.useState(false);
+  const { tx } = useLanguage();
 
   // Состояния модалов
   const [aboutOpen, setAboutOpen] = React.useState(false);
@@ -73,6 +76,15 @@ export default function Home() {
   const [donateOpen, setDonateOpen] = React.useState(false);
 
   React.useEffect(() => setMounted(true), []);
+  
+  const GROUP_LABEL_EN: Record<string, string> = {
+  finance: "International Finance & Economy",
+  law: "Legislation & Privatization",
+  escalation: "Escalation Risk Signals",
+  ukraine_military: "Ukrainian Military Markers",
+  russia: "Russian Side Markers",
+  politics: "Politics & Infopolitics",
+};
 
   // Опрос /api/status
   React.useEffect(() => {
@@ -140,6 +152,7 @@ export default function Home() {
       return {
         key,
         labelRu: meta?.labelRu ?? key,
+        labelEn: meta?.label,
         avg,
         weight,
         count: list.length,
@@ -155,11 +168,12 @@ export default function Home() {
     }
 
     const segs: SegmentDef[] = rows.map((r) => ({
-      groupKey: r.key,
-      label: r.labelRu,
-      contribution: r.contribution,
-      avgProbability: r.avg,
-    }));
+  groupKey: r.key,
+  label: r.labelRu,
+  labelEn: r.labelEn,  // ← ДОБАВИТЬ
+  contribution: r.contribution,
+  avgProbability: r.avg,
+}));
 
     return { groupRows: rows, segments: segs };
   }, [markers, groups, calcDate]);
@@ -189,42 +203,35 @@ export default function Home() {
 </div>
             <div className="min-w-0">
               <h1 className="truncate text-base font-bold leading-tight sm:text-lg">
-                Индекс Мира 180
-              </h1>
-              <p className="truncate text-[11px] text-muted-foreground">
-                Peace Index 180 · AI-аналитика открытых данных
-              </p>
+  {tx("appTitle")}
+</h1>
+<p className="truncate text-[11px] text-muted-foreground">
+  {tx("appSubtitle")}
+</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <a
-              href="https://github.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:inline-flex"
-              aria-label="Исходный код"
-            >
-              <Button variant="ghost" size="icon" className="h-9 w-9">
-                <Github className="h-4 w-4" />
-              </Button>
-            </a>
-            {mounted && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9"
-                onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-                aria-label="Переключить тему"
-              >
-                {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </Button>
-            )}
-            <BurgerMenu
-              onAbout={() => setAboutOpen(true)}
-              onMethodology={() => setMethodologyOpen(true)}
-              onDonate={() => setDonateOpen(true)}
-            />
-          </div>
+  
+  {mounted && (
+    <>
+      <LanguageToggle />
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9"
+        onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+        aria-label="Переключить тему"
+      >
+        {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      </Button>
+    </>
+  )}
+  <BurgerMenu
+    onAbout={() => setAboutOpen(true)}
+    onMethodology={() => setMethodologyOpen(true)}
+    onDonate={() => setDonateOpen(true)}
+  />
+</div>
         </div>
       </header>
 
@@ -257,25 +264,24 @@ export default function Home() {
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <h2 className="flex items-center gap-2 text-lg font-semibold">
-                    <Layers className="h-4.5 w-4.5 text-muted-foreground" />
-                    Структура индекса
-                  </h2>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {markers.length} маркеров в 6 группах · кликните группу, чтобы
-                    раскрыть её маркеры
-                  </p>
+  <Layers className="h-4.5 w-4.5 text-muted-foreground" />
+  {tx("structureTitle")}
+</h2>
+<p className="mt-0.5 text-xs text-muted-foreground">
+  {tx("structureSubtitle").replace("{count}", String(markers.length))}
+</p>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" className="h-8 text-xs" onClick={expandAll}>
-                    Раскрыть все
-                  </Button>
-                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={collapseAll}>
-                    Свернуть все
-                  </Button>
+  {tx("expandAll")}
+</Button>
+<Button variant="outline" size="sm" className="h-8 text-xs" onClick={collapseAll}>
+  {tx("collapseAll")}
+</Button>
                 </div>
               </div>
 
-              <GroupOverview
+                            <GroupOverview
                 groups={groupRows}
                 openKeys={openGroups}
                 onToggle={toggleGroup}
@@ -303,10 +309,8 @@ export default function Home() {
                           <BookOpen className="h-4.5 w-4.5 text-muted-foreground" />
                         </div>
                         <div>
-                          <h3 className="text-sm font-semibold">Как считается индекс</h3>
-                          <p className="text-xs text-muted-foreground">
-                            Методология, маркеры, шкала -100..+100 и источники данных
-                          </p>
+                          <h3 className="text-sm font-semibold">{tx("methodologyTitle")}</h3>
+<p className="text-xs text-muted-foreground">{tx("methodologySubtitle")}</p>
                         </div>
                       </div>
                       <ChevronDown
@@ -376,8 +380,8 @@ export default function Home() {
             <Disclaimer />
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
-            <span>Peace Index 180 · некоммерческий проект · open data + AI</span>
-            <span>горизонт 180 дней · автообновление ежедневно в 02:00 UTC</span>
+            <span>{tx("footerProject")}</span>
+<span>{tx("footerSchedule")}</span>
           </div>
         </div>
       </footer>
@@ -406,6 +410,8 @@ function EmptyState({
   running: boolean;
   progress: HeroJobView["progress"];
 }) {
+  const { tx } = useLanguage();
+  
   return (
     <Card className="mt-6 flex flex-col items-center justify-center p-12 text-center">
       {running ? (
@@ -413,13 +419,12 @@ function EmptyState({
           <div className="relative">
             <div className="h-16 w-16 animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-600 dark:border-emerald-950 dark:border-t-emerald-400" />
           </div>
-          <h3 className="mt-5 text-lg font-semibold">Идёт первый расчёт…</h3>
+          <h3 className="mt-5 text-lg font-semibold">{tx("emptyCalculating")}</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {progress?.current ?? "Подготовка данных"}
           </p>
           <p className="mt-4 max-w-md text-xs text-muted-foreground">
-            Система анализирует 24 маркера с помощью ИИ и Google News RSS.
-            Расчёт занимает 3–4 минуты. Данные обновляются автоматически каждые сутки.
+            {tx("emptyCalculatingDesc")}
           </p>
         </>
       ) : (
@@ -427,10 +432,9 @@ function EmptyState({
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40">
             <Activity className="h-8 w-8" />
           </div>
-          <h3 className="mt-5 text-lg font-semibold">Данных пока нет</h3>
+          <h3 className="mt-5 text-lg font-semibold">{tx("emptyNoData")}</h3>
           <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            Первый расчёт выполняется автоматически по расписанию (02:00 UTC).
-            Пожалуйста, проверьте позже или запустите вручную через GitHub Actions.
+            {tx("emptySchedule")}
           </p>
         </>
       )}

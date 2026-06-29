@@ -188,16 +188,17 @@ ${shareUrl}`);
       <div className="flex h-screen flex-col items-center justify-center bg-black px-4">
 
         {/* ===== ОБЛАСТЬ СКРИНШОТА ===== */}
-        <div 
+                <div 
           ref={captureRef} 
-          className="w-full max-w-[320px] p-6 rounded-3xl"
+          className="w-full max-w-[300px] rounded-3xl overflow-visible"
           style={{ background: "linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 100%)" }}
         >
-          <SpeedometerGauge
-            value={data.totalProbability}
-            segments={data.segments}
-            dark={true}
-          />
+          <div className="px-5 pb-5 pt-10">
+            <SpeedometerGauge
+              value={data.totalProbability}
+              segments={data.segments}
+              dark={true}
+            />
 
           {/* Дата под спидометром */}
           <div className="mt-4 text-center text-xs text-white/40">
@@ -207,9 +208,10 @@ ${shareUrl}`);
             )}
           </div>
 
-          {/* URL внизу */}
-          <div className="mt-2 text-center text-[10px] text-white/20">
-            peace-index-180.vercel.app
+                      {/* URL внизу */}
+            <div className="mt-2 text-center text-[10px] text-white/20">
+              peace-index-180.vercel.app
+            </div>
           </div>
         </div>
 

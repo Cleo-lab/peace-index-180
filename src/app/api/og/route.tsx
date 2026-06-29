@@ -1,138 +1,249 @@
 // app/api/og/route.tsx
-// БЕЗ SVG <text> — весь текст через HTML div'ы
+// OG-спидометр с реальными сегментами групп (как в виджете)
 
 import { ImageResponse } from "@vercel/og";
-import { db } from "@/lib/db";
-import { OG_COLORS, ogProbabilityColor, ogTierLabel } from "@/lib/og-colors";
+import { OG_COLORS, ogProbabilityColor, ogTierLabel, ogGroupColor } from "@/lib/og-colors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// ===== Математика спидометра (1:1 как в speedometer-gauge.tsx) =====
+const CX = 260;
+const CY = 180;
+const R = 140;
+const STROKE = 22;
+
+function polar(cx: number, cy: number, r: number, angleDeg: number) {
+  const rad = ((angleDeg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function arcPath(cx: number, cy: number, r: number, a1: number, a2: number): string {
+  const p1 = polar(cx, cy, r, a1);
+  const p2 = polar(cx, cy, r, a2);
+  const largeArc = Math.abs(a2 - a1) > 180 ? 1 : 0;
+  const sweep = a2 > a1 ? 1 : 0;
+  return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} A ${r} ${r} 0 ${largeArc} ${sweep} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+}
+
+function valueToAngle(v: number): number {
+  const normalized = Math.max(-100, Math.min(100, v));
+  return 225 + ((normalized + 100) / 200) * 270;
+}
+
+const MAJOR_TICKS = [-100, -75, -50, -25, 0, 25, 50, 75, 100];
+const MINOR_TICKS: number[] = [];
+for (let t = -95; t <= 95; t += 5) {
+  if (!MAJOR_TICKS.includes(t)) MINOR_TICKS.push(t);
+}
+
+const GROUP_ORDER = ["finance", "law", "escalation", "ukraine_military", "russia", "politics"] as const;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const lang = (searchParams.get("lang") ?? "ru") as "ru" | "en";
 
-  const agg = await db.aggregate.findFirst({ orderBy: { calcDate: "desc" } });
-  const value = agg?.totalProbability ?? 0;
-  const dateStr = agg?.calcDate
-    ? agg.calcDate.toLocaleDateString(lang === "ru" ? "ru-RU" : "en-US", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      })
-    : "";
+  let value = 0;
+  let dateStr = "";
+  let segments: Array<{
+    key: string;
+    label: string;
+    labelRu: string;
+    contribution: number;
+    color: string;
+  }> = [];
 
+  try {
+    const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000";
+    const res = await fetch(`${baseUrl}/api/status`, { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      value = data.aggregate?.totalProbability ?? 0;
+
+      if (data.calcDate) {
+        dateStr = new Date(data.calcDate).toLocaleDateString(lang === "ru" ? "ru-RU" : "en-US", { day: "numeric", month: "long", year: "numeric" });
+      }
+
+      const markers: any[] = data.markers ?? [];
+      const groups: any[] = data.groups ?? [];
+      const map: Record<string, any[]> = {};
+      for (const m of markers) (map[m.group] ??= []).push(m);
+
+      const rows = GROUP_ORDER.map((key) => {
+        const list = map[key] ?? [];
+        const weight = list.reduce((sum: number, m: any) => sum + m.weight, 0);
+        const wp = list.reduce((sum: number, m: any) => sum + m.weight * m.probability, 0);
+        const avg = weight > 0 ? wp / weight : 0;
+        const meta = groups.find((g: any) => g.key === key);
+        return { key, label: meta?.label ?? key, labelRu: meta?.labelRu ?? key, avg, weight, count: list.length };
+      }).filter((g) => g.count > 0);
+
+      const totalWeight = rows.reduce((sum, g) => sum + g.weight, 0);
+      for (const r of rows) r.contribution = totalWeight > 0 ? (r.weight / totalWeight) * r.avg : 0;
+
+      segments = rows
+        .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
+        .map((r) => ({
+          key: r.key,
+          label: r.label,
+          labelRu: r.labelRu,
+          contribution: r.contribution,
+          color: ogGroupColor(r.key),
+        }));
+    }
+  } catch (err) {
+    console.error("OG fetch error:", err);
+  }
+
+  if (segments.length === 0) {
+    segments = [
+      { key: "finance", label: "Int'l Finance", labelRu: "Международные финансы", contribution: 0, color: ogGroupColor("finance") },
+      { key: "escalation", label: "Escalation Risk", labelRu: "Риск эскалации", contribution: 0, color: ogGroupColor("escalation") },
+      { key: "ukraine_military", label: "UA Military", labelRu: "Военные маркеры UA", contribution: 0, color: ogGroupColor("ukraine_military") },
+      { key: "russia", label: "Russia", labelRu: "Маркеры РФ", contribution: 0, color: ogGroupColor("russia") },
+      { key: "law", label: "Legislation", labelRu: "Законодательство", contribution: 0, color: ogGroupColor("law") },
+      { key: "politics", label: "Politics", labelRu: "Политика", contribution: 0, color: ogGroupColor("politics") },
+    ];
+  }
+
+  const totalAbs = segments.reduce((s, x) => s + Math.abs(x.contribution), 0);
   const formatted = value > 0 ? `+${value}` : `${value}`;
   const color = ogProbabilityColor(value);
   const tier = ogTierLabel(value, lang);
   const title = lang === "en" ? "Peace Index 180" : "Индекс Мира 180";
   const subtitle = lang === "en" ? "180-day peace probability" : "Вероятность мира за 180 дней";
 
+  const needleAngle = valueToAngle(value);
+  const needleLen = R - STROKE - 10;
+  const needleEnd = polar(CX, CY, needleLen, needleAngle);
+  const nb1 = polar(CX, CY, 8, needleAngle + 90);
+  const nb2 = polar(CX, CY, 8, needleAngle - 90);
+
+  const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000";
+  const iconUrl = `${baseUrl}/icon-512.png`;
+
+  // ===== Считаем сегменты дуги как в виджете =====
+  const positiveSegments = segments.filter((s) => s.contribution > 0);
+  const negativeSegments = segments.filter((s) => s.contribution < 0);
+  const totalPositive = positiveSegments.reduce((s, x) => s + x.contribution, 0);
+  const totalNegative = Math.abs(negativeSegments.reduce((s, x) => s + x.contribution, 0));
+
+  // Левая сторона (-100..0): отрицательные группы
+  const leftArcs: Array<{ start: number; end: number; color: string }> = [];
+  if (totalNegative > 0) {
+    let cursor = 360; // 0° = 360° в нашей системе
+    for (const seg of negativeSegments) {
+      const portion = Math.abs(seg.contribution) / totalNegative;
+      const angleSpan = portion * 135; // 360° → 225° (135°)
+      const end = cursor - angleSpan;
+      leftArcs.push({ start: Math.max(end, 225), end: cursor, color: seg.color });
+      cursor = end;
+    }
+  }
+
+  // Правая сторона (0..+100): положительные группы
+  const rightArcs: Array<{ start: number; end: number; color: string }> = [];
+  if (totalPositive > 0) {
+    let cursor = 360; // 0° = 360°
+    for (const seg of positiveSegments) {
+      const portion = seg.contribution / totalPositive;
+      const angleSpan = portion * 135; // 360° → 495° (135°)
+      const end = cursor + angleSpan;
+      rightArcs.push({ start: cursor, end: Math.min(end, 495), color: seg.color });
+      cursor = end;
+    }
+  }
+
   return new ImageResponse(
     (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          background: `linear-gradient(135deg, ${OG_COLORS.bg_dark} 0%, ${OG_COLORS.bg_card} 100%)`,
-          color: OG_COLORS.text_primary,
-          fontFamily: "system-ui, sans-serif",
-          padding: 40,
-        }}
-      >
+      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: `linear-gradient(135deg, ${OG_COLORS.bg_dark} 0%, ${OG_COLORS.bg_card} 100%)`, color: OG_COLORS.text_primary, fontFamily: "system-ui, -apple-system, sans-serif", padding: 36 }}>
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: `linear-gradient(135deg, ${OG_COLORS.high_peace}, ${OG_COLORS.peace_tendency})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700 }}>
-              ☮
-            </div>
+            <img src={iconUrl} width="44" height="44" style={{ borderRadius: 12 }} />
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: OG_COLORS.text_primary }}>{title}</div>
-              <div style={{ fontSize: 13, color: OG_COLORS.text_secondary }}>{subtitle}</div>
+              <div style={{ fontSize: 24, fontWeight: 700 }}>{title}</div>
+              <div style={{ fontSize: 14, color: OG_COLORS.text_secondary }}>{subtitle}</div>
             </div>
           </div>
           <div style={{ fontSize: 14, color: OG_COLORS.text_muted }}>{dateStr}</div>
         </div>
 
-        {/* Content: gauge + text overlay */}
-        <div style={{ display: "flex", flex: 1, alignItems: "center", gap: 30 }}>
+        {/* Main */}
+        <div style={{ display: "flex", flex: 1, alignItems: "center", gap: 24 }}>
+          {/* Gauge */}
+          <div style={{ width: 520, height: 360, display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <svg width="520" height="300" viewBox="0 0 520 300">
+              {/* Фоновая дуга */}
+              <path d={arcPath(CX, CY, R, 225, 495)} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={STROKE} />
 
-          {/* Gauge area — SVG + HTML overlay */}
-          <div style={{ width: 560, height: 380, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-            {/* SVG — только графика, без текста */}
-            <svg width="560" height="380" viewBox="0 0 560 380" style={{ position: "absolute" }}>
-              {/* Background arc */}
-              <path d="M 60 340 A 220 220 0 0 1 500 340" fill="none" stroke={OG_COLORS.track_bg} strokeWidth="28" />
-              {/* Left zone (war) */}
-              <path d="M 60 340 A 220 220 0 0 1 170 150" fill="none" stroke={OG_COLORS.war} strokeWidth="28" opacity="0.3" />
-              {/* Center-left (escalation) */}
-              <path d="M 170 150 A 220 220 0 0 1 280 120" fill="none" stroke={OG_COLORS.escalation} strokeWidth="28" opacity="0.3" />
-              {/* Center (stalemate) */}
-              <path d="M 280 120 A 220 220 0 0 1 390 150" fill="none" stroke={OG_COLORS.stalemate} strokeWidth="28" opacity="0.3" />
-              {/* Center-right (peace tendency) */}
-              <path d="M 390 150 A 220 220 0 0 1 500 340" fill="none" stroke={OG_COLORS.peace_tendency} strokeWidth="28" opacity="0.3" />
+              {/* Левая сторона: отрицательные сегменты */}
+              {leftArcs.map((arc, i) => (
+                <path key={`L${i}`} d={arcPath(CX, CY, R, arc.start, arc.end)} fill="none" stroke={arc.color} strokeWidth={STROKE} strokeLinecap="butt" />
+              ))}
+
+              {/* Правая сторона: положительные сегменты */}
+              {rightArcs.map((arc, i) => (
+                <path key={`R${i}`} d={arcPath(CX, CY, R, arc.start, arc.end)} fill="none" stroke={arc.color} strokeWidth={STROKE} strokeLinecap="butt" />
+              ))}
+
+              {/* Мелкие тики */}
+              {MINOR_TICKS.map((t) => {
+                const a = valueToAngle(t);
+                const p1 = polar(CX, CY, R + STROKE / 2 + 2, a);
+                const p2 = polar(CX, CY, R + STROKE / 2 + 6, a);
+                return <line key={`m${t}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="rgba(255,255,255,0.25)" strokeWidth={1} />;
+              })}
+
+              {/* Major тики */}
+              {MAJOR_TICKS.map((t) => {
+                const a = valueToAngle(t);
+                const p1 = polar(CX, CY, R + STROKE / 2 + 2, a);
+                const p2 = polar(CX, CY, R + STROKE / 2 + 14, a);
+                return <line key={`M${t}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="rgba(255,255,255,0.7)" strokeWidth={2.5} />;
+              })}
+
+              {/* Стрелка */}
+              <polygon points={`${nb1.x.toFixed(1)},${nb1.y.toFixed(1)} ${nb2.x.toFixed(1)},${nb2.y.toFixed(1)} ${needleEnd.x.toFixed(1)},${needleEnd.y.toFixed(1)}`} fill="#f5f5f5" />
+              <circle cx={CX} cy={CY} r={10} fill="#f5f5f5" />
+              <circle cx={CX} cy={CY} r={4} fill={OG_COLORS.bg_dark} />
             </svg>
 
-            {/* HTML overlay — текст поверх SVG */}
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 10, marginTop: 80 }}>
-              <div style={{ fontSize: 72, fontWeight: 700, color, lineHeight: 1 }}>{formatted}</div>
-              <div style={{ fontSize: 24, fontWeight: 600, color: OG_COLORS.text_secondary, marginTop: 8 }}>{tier}</div>
+            {/* Цифра + Tier */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: -70 }}>
+              <div style={{ fontSize: 64, fontWeight: 800, color, lineHeight: 1, textShadow: "0 2px 8px rgba(0,0,0,0.5)" }}>{formatted}</div>
+              <div style={{ fontSize: 22, fontWeight: 600, color: OG_COLORS.text_secondary, marginTop: 6 }}>{tier}</div>
             </div>
           </div>
 
           {/* Legend */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, width: 420 }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: OG_COLORS.text_primary, marginBottom: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, width: 400, paddingTop: 8 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
               {lang === "en" ? "Index Structure" : "Структура индекса"}
             </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 12, height: 12, borderRadius: 3, background: OG_COLORS.finance }} />
-              <span style={{ flex: 1, fontSize: 14, color: OG_COLORS.text_secondary }}>{lang === "en" ? "Int'l Finance" : "Международные финансы"}</span>
-              <span style={{ fontSize: 14, fontWeight: 600, color: OG_COLORS.finance }}>+12.5</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 12, height: 12, borderRadius: 3, background: OG_COLORS.law }} />
-              <span style={{ flex: 1, fontSize: 14, color: OG_COLORS.text_secondary }}>{lang === "en" ? "Legislation" : "Законодательство"}</span>
-              <span style={{ fontSize: 14, fontWeight: 600, color: OG_COLORS.law }}>+8.3</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 12, height: 12, borderRadius: 3, background: OG_COLORS.escalation_group }} />
-              <span style={{ flex: 1, fontSize: 14, color: OG_COLORS.text_secondary }}>{lang === "en" ? "Escalation Risk" : "Риск эскалации"}</span>
-              <span style={{ fontSize: 14, fontWeight: 600, color: OG_COLORS.escalation_group }}>-15.2</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 12, height: 12, borderRadius: 3, background: OG_COLORS.ukraine_military }} />
-              <span style={{ flex: 1, fontSize: 14, color: OG_COLORS.text_secondary }}>{lang === "en" ? "UA Military" : "Военные маркеры UA"}</span>
-              <span style={{ fontSize: 14, fontWeight: 600, color: OG_COLORS.ukraine_military }}>-5.1</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 12, height: 12, borderRadius: 3, background: OG_COLORS.russia }} />
-              <span style={{ flex: 1, fontSize: 14, color: OG_COLORS.text_secondary }}>{lang === "en" ? "Russia" : "Маркеры РФ"}</span>
-              <span style={{ fontSize: 14, fontWeight: 600, color: OG_COLORS.russia }}>-3.8</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 12, height: 12, borderRadius: 3, background: OG_COLORS.politics }} />
-              <span style={{ flex: 1, fontSize: 14, color: OG_COLORS.text_secondary }}>{lang === "en" ? "Politics" : "Политика"}</span>
-              <span style={{ fontSize: 14, fontWeight: 600, color: OG_COLORS.politics }}>+2.1</span>
-            </div>
+            {segments.map((seg) => {
+              const sign = seg.contribution > 0 ? "+" : "";
+              const share = totalAbs > 0 ? Math.round((Math.abs(seg.contribution) / totalAbs) * 100) : 0;
+              const label = lang === "en" ? seg.label : seg.labelRu;
+              return (
+                <div key={seg.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 2, background: seg.color, flexShrink: 0 }} />
+                  <span style={{ flex: 1, fontSize: 13, color: OG_COLORS.text_secondary }}>{label}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: seg.color, fontFamily: "monospace", width: 48, textAlign: "right" }}>{sign}{seg.contribution.toFixed(1)}</span>
+                  <span style={{ width: 36, textAlign: "right", fontSize: 11, color: OG_COLORS.text_muted, fontFamily: "monospace" }}>{share}%</span>
+                </div>
+              );
+            })}
           </div>
         </div>
 
         {/* Footer */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 20, paddingTop: 16, borderTop: `1px solid ${OG_COLORS.track_bg}` }}>
-          <div style={{ fontSize: 13, color: OG_COLORS.text_muted }}>
-            {lang === "en" ? "AI-powered analytics based on open data" : "AI-аналитика на основе открытых данных"}
-          </div>
-          <div style={{ fontSize: 12, color: OG_COLORS.text_url }}>
-            peace-index-180.vercel.app
-          </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14, paddingTop: 12, borderTop: `1px solid ${OG_COLORS.track_bg}` }}>
+          <div style={{ fontSize: 12, color: OG_COLORS.text_muted }}>{lang === "en" ? "AI-powered analytics based on open data" : "AI-аналитика на основе открытых данных"}</div>
+          <div style={{ fontSize: 12, color: OG_COLORS.text_url }}>peace-index-180.vercel.app</div>
         </div>
       </div>
     ),
     { width: 1200, height: 630 }
   );
 }
-

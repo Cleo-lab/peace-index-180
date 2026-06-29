@@ -3,11 +3,12 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
+import { toPng } from "html-to-image";
 import { SpeedometerGauge, type SegmentDef } from "@/components/peace/speedometer-gauge";
 import { LanguageProvider, useLanguage } from "@/components/peace/language-context";
 import { LanguageToggle } from "@/components/peace/language-toggle";
 import { probabilityLabelRu } from "@/lib/colors";
-import { ArrowUpRight, Share2, X } from "lucide-react";
+import { ArrowUpRight, Share2, X, Camera } from "lucide-react";
 import Head from "next/head";
 
 const GROUP_ORDER = ["finance", "law", "escalation", "ukraine_military", "russia", "politics"] as const;
@@ -31,7 +32,11 @@ export default function WidgetPage() {
 function WidgetContent() {
   const [data, setData] = React.useState<WidgetData | null>(null);
   const [showRationale, setShowRationale] = React.useState(false);
+  const [sharing, setSharing] = React.useState(false);
   const { lang, tx, setLang } = useLanguage();
+
+  // Ref для скриншота — спидометр + легенда
+  const captureRef = React.useRef<HTMLDivElement>(null);
 
   // Синхронизируем язык из URL при загрузке
   React.useEffect(() => {
@@ -97,6 +102,61 @@ function WidgetContent() {
       });
   }, []);
 
+  // ===== СКРИНШОТ + ШАРИНГ =====
+  async function handleShare() {
+    if (!captureRef.current || !data) return;
+
+    setSharing(true);
+    try {
+      // Делаем скриншот
+      const dataUrl = await toPng(captureRef.current, {
+        quality: 0.95,
+        pixelRatio: 2,
+        backgroundColor: "#000000",
+      });
+
+      // Конвертируем в blob
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      const file = new File([blob], `peace-index-${data.calcDate}.png`, { type: "image/png" });
+
+      const shareUrl = `https://peace-index-180.vercel.app/widget?lang=${lang}`;
+      const label = probabilityLabelRu(data.totalProbability);
+      const formatted = data.totalProbability > 0 ? `+${data.totalProbability}` : `${data.totalProbability}`;
+      const shareText = `${tx("appTitle")}: ${formatted}% — ${label}`;
+
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          title: tx("appTitle"),
+          text: shareText,
+          url: shareUrl,
+          files: [file],
+        });
+      } else if (navigator.share) {
+        // Fallback: без файла, но с URL
+        await navigator.share({
+          title: tx("appTitle"),
+          text: `${shareText}
+${shareUrl}`,
+          url: shareUrl,
+        });
+      } else {
+        // Fallback: копируем в буфер обмена
+        await navigator.clipboard.writeText(`${shareText}
+${shareUrl}`);
+        alert(tx("widgetCopied"));
+      }
+    } catch (err) {
+      console.error("Share failed:", err);
+      // Если шаринг отменён пользователем — не показываем ошибку
+      if (err instanceof Error && err.name !== "AbortError") {
+        alert("Failed to share. Please try again.");
+      }
+    } finally {
+      setSharing(false);
+    }
+  }
+
   if (!data) {
     return (
       <div className="flex h-screen items-center justify-center bg-black">
@@ -108,7 +168,9 @@ function WidgetContent() {
   const rationaleText = lang === "ru" && data.summaryRu ? data.summaryRu : data.summaryEn;
   const formatted = data.totalProbability > 0 ? `+${data.totalProbability}` : `${data.totalProbability}`;
   const shareUrl = `https://peace-index-180.vercel.app/widget?lang=${lang}`;
-  const ogImageUrl = `https://peace-index-180.vercel.app/api/og?v=${data.totalProbability}&d=${encodeURIComponent(data.calcDate)}&l=${encodeURIComponent(probabilityLabelRu(data.totalProbability))}&lang=${lang}`;
+
+  // OG-мета для ссылки (когда шарят URL, а не файл)
+  const ogImageUrl = `https://peace-index-180.vercel.app/api/og?lang=${lang}`;
 
   return (
     <>
@@ -124,25 +186,59 @@ function WidgetContent() {
       </Head>
 
       <div className="flex h-screen flex-col items-center justify-center bg-black px-4">
-        <div className="w-full max-w-[320px]">
+
+        {/* ===== ОБЛАСТЬ СКРИНШОТА ===== */}
+        <div 
+          ref={captureRef} 
+          className="w-full max-w-[320px] p-6 rounded-3xl"
+          style={{ background: "linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 100%)" }}
+        >
           <SpeedometerGauge
             value={data.totalProbability}
             segments={data.segments}
             dark={true}
           />
+
+          {/* Дата под спидометром */}
+          <div className="mt-4 text-center text-xs text-white/40">
+            {new Date(data.calcDate).toLocaleDateString(
+              lang === "ru" ? "ru-RU" : "en-US",
+              { day: "numeric", month: "long", year: "numeric" }
+            )}
+          </div>
+
+          {/* URL внизу */}
+          <div className="mt-2 text-center text-[10px] text-white/20">
+            peace-index-180.vercel.app
+          </div>
         </div>
 
+        {/* ===== КНОПКИ УПРАВЛЕНИЯ (не входят в скриншот) ===== */}
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <LanguageToggle variant="dark" />
+
           <button
             onClick={() => setShowRationale(true)}
             className="rounded-full bg-white/10 px-5 py-2.5 text-sm text-white backdrop-blur-sm transition hover:bg-white/20"
           >
             {tx("widgetRationale")}
           </button>
-          <ShareButton value={data.totalProbability} calcDate={data.calcDate} />
+
+          <button
+            onClick={handleShare}
+            disabled={sharing}
+            className="flex items-center gap-2 rounded-full bg-emerald-600/20 px-5 py-2.5 text-sm text-emerald-400 transition hover:bg-emerald-600/30 disabled:opacity-50"
+          >
+            {sharing ? (
+              <Camera className="h-4 w-4 animate-pulse" />
+            ) : (
+              <Share2 className="h-4 w-4" />
+            )}
+            {sharing ? "..." : tx("widgetShare")}
+          </button>
         </div>
 
+        {/* ===== МОДАЛЬНОЕ ОКНО С ОБОСНОВАНИЕМ ===== */}
         {showRationale && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -177,43 +273,3 @@ function WidgetContent() {
   );
 }
 
-function ShareButton({ value, calcDate }: { value: number; calcDate: string }) {
-  const { lang, tx } = useLanguage();
-  const [sharing, setSharing] = React.useState(false);
-
-  const shareUrl = `https://peace-index-180.vercel.app/widget?lang=${lang}`;
-  const label = probabilityLabelRu(value);
-
-  async function handleShare() {
-    setSharing(true);
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: `${tx("appTitle")}: ${value > 0 ? "+" : ""}${value}%`,
-          text: `${tx("widgetShareText")}: ${label}`,
-          url: shareUrl,
-        });
-      } else {
-        await navigator.clipboard.writeText(
-          `${tx("appTitle")}: ${value > 0 ? "+" : ""}${value}% — ${label}\n${shareUrl}`
-        );
-        alert(tx("widgetCopied"));
-      }
-    } catch (e) {
-      console.error("Share failed:", e);
-    } finally {
-      setSharing(false);
-    }
-  }
-
-  return (
-    <button
-      onClick={handleShare}
-      disabled={sharing}
-      className="flex items-center gap-2 rounded-full bg-white/5 px-4 py-2.5 text-sm text-white/60 transition hover:bg-white/10"
-    >
-      <Share2 className="h-4 w-4" />
-      {sharing ? "..." : tx("widgetShare")}
-    </button>
-  );
-}

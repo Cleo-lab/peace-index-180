@@ -1,3 +1,4 @@
+
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -35,7 +36,7 @@ export const metadata: Metadata = {
     url: "https://peace-index-180.vercel.app/",
     siteName: "Peace Index 180",
     images: [{
-      url: "/api/share-image?v=0&d=2026-06-24&l=Стагнация",
+      url: "/api/og?lang=ru",
       width: 1200,
       height: 630,
       alt: "Индекс Мира 180",
@@ -47,7 +48,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Индекс Мира 180",
     description: "AI-аналитика вероятности мира в Украине за 180 дней",
-    images: ["/api/share-image?v=0&d=2026-06-24&l=Стагнация"],
+    images: ["/api/og?lang=ru"],
   },
   manifest: "/manifest.json",
   appleWebApp: {
@@ -83,3 +84,5 @@ export default function RootLayout({
     </html>
   );
 }
+
+

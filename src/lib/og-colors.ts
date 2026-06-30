@@ -18,7 +18,7 @@ export const OG_COLORS = {
   bg_dark: "#000000",      // ← ЧЁРНЫЙ фон
   bg_card: "#0a0a0a",      // ← Тоже чёрный
   text_primary: "#f8fafc",
-  text_secondary: "#94a3b8",
+  text_secondary: "#FFFFFF",
   text_muted: "#64748b",
   text_url: "#475569",
   track_bg: "#334155",

@@ -210,8 +210,8 @@ export async function GET(request: Request) {
               return (
                 <div key={seg.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{ width: 10, height: 10, borderRadius: 2, background: seg.color, flexShrink: 0 }} />
-                  <span style={{ flex: 1, fontSize: 20, color: OG_COLORS.text_secondary }}>{label}</span>
-                  <span style={{ fontSize: 20, fontWeight: 700, color: seg.color, fontFamily: "monospace", width: 48, textAlign: "right" }}>{sign}{seg.contribution.toFixed(1)}</span>
+                  <span style={{ flex: 1, fontSize: 28, color: OG_COLORS.text_secondary }}>{label}</span>
+                  <span style={{ fontSize: 28, fontWeight: 700, color: seg.color, fontFamily: "monospace", width: 48, textAlign: "right" }}>{sign}{seg.contribution.toFixed(1)}</span>
                   <span style={{ width: 36, textAlign: "right", fontSize: 13, color: OG_COLORS.text_muted, fontFamily: "monospace" }}>{share}%</span>
                 </div>
               );

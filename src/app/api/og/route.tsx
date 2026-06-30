@@ -1,13 +1,10 @@
 // app/api/og/route.tsx
-// OG-спидометр с реальными сегментами групп
-
 import { ImageResponse } from "next/og";
-import { OG_COLORS, ogProbabilityColor, ogTierLabel, ogGroupColor } from "@/lib/og-colors";
+import { OG_COLORS, ogProbabilityColor, ogTierLabel, ogGroupColor, OG_GROUP_LABELS } from "@/lib/og-colors";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
-// ===== Математика спидометра =====
 const CX = 260;
 const CY = 180;
 const R = 140;
@@ -90,8 +87,8 @@ export async function GET(request: Request) {
         .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
         .map((r) => ({
           key: r.key,
-          label: r.label,
-          labelRu: r.labelRu,
+          label: OG_GROUP_LABELS[r.key]?.en ?? r.label,        // ← Используем OG_GROUP_LABELS
+          labelRu: OG_GROUP_LABELS[r.key]?.ru ?? r.labelRu,   // ← Используем OG_GROUP_LABELS
           contribution: r.contribution,
           color: ogGroupColor(r.key),
         }));
@@ -102,12 +99,12 @@ export async function GET(request: Request) {
 
   if (segments.length === 0) {
     segments = [
-      { key: "finance", label: "Int'l Finance", labelRu: "Международные финансы", contribution: 0, color: ogGroupColor("finance") },
-      { key: "escalation", label: "Escalation Risk", labelRu: "Риск эскалации", contribution: 0, color: ogGroupColor("escalation") },
-      { key: "ukraine_military", label: "UA Military", labelRu: "Военные маркеры UA", contribution: 0, color: ogGroupColor("ukraine_military") },
-      { key: "russia", label: "Russia", labelRu: "Маркеры РФ", contribution: 0, color: ogGroupColor("russia") },
-      { key: "law", label: "Legislation", labelRu: "Законодательство", contribution: 0, color: ogGroupColor("law") },
-      { key: "politics", label: "Politics", labelRu: "Политика", contribution: 0, color: ogGroupColor("politics") },
+      { key: "finance", label: OG_GROUP_LABELS.finance.en, labelRu: OG_GROUP_LABELS.finance.ru, contribution: 0, color: ogGroupColor("finance") },
+      { key: "escalation", label: OG_GROUP_LABELS.escalation.en, labelRu: OG_GROUP_LABELS.escalation.ru, contribution: 0, color: ogGroupColor("escalation") },
+      { key: "ukraine_military", label: OG_GROUP_LABELS.ukraine_military.en, labelRu: OG_GROUP_LABELS.ukraine_military.ru, contribution: 0, color: ogGroupColor("ukraine_military") },
+      { key: "russia", label: OG_GROUP_LABELS.russia.en, labelRu: OG_GROUP_LABELS.russia.ru, contribution: 0, color: ogGroupColor("russia") },
+      { key: "law", label: OG_GROUP_LABELS.law.en, labelRu: OG_GROUP_LABELS.law.ru, contribution: 0, color: ogGroupColor("law") },
+      { key: "politics", label: OG_GROUP_LABELS.politics.en, labelRu: OG_GROUP_LABELS.politics.ru, contribution: 0, color: ogGroupColor("politics") },
     ];
   }
 
@@ -155,7 +152,7 @@ export async function GET(request: Request) {
 
   return new ImageResponse(
     (
-      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: `linear-gradient(135deg, ${OG_COLORS.bg_dark} 0%, ${OG_COLORS.bg_card} 100%)`, color: OG_COLORS.text_primary, fontFamily: "system-ui, -apple-system, sans-serif", padding: 36 }}>
+      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: "#000000", color: OG_COLORS.text_primary, fontFamily: "system-ui, -apple-system, sans-serif", padding: 36 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <div style={{ display: "flex", flexDirection: "column" }}>
             <div style={{ fontSize: 24, fontWeight: 700 }}>{title}</div>
@@ -193,17 +190,17 @@ export async function GET(request: Request) {
 
               <polygon points={`${nb1.x.toFixed(1)},${nb1.y.toFixed(1)} ${nb2.x.toFixed(1)},${nb2.y.toFixed(1)} ${needleEnd.x.toFixed(1)},${needleEnd.y.toFixed(1)}`} fill="#f5f5f5" />
               <circle cx={CX} cy={CY} r={10} fill="#f5f5f5" />
-              <circle cx={CX} cy={CY} r={4} fill={OG_COLORS.bg_dark} />
+              <circle cx={CX} cy={CY} r={4} fill="#000000" />
             </svg>
 
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: -70 }}>
               <div style={{ fontSize: 64, fontWeight: 800, color, lineHeight: 1, textShadow: "0 2px 8px rgba(0,0,0,0.5)" }}>{formatted}</div>
-              <div style={{ fontSize: 22, fontWeight: 600, color: OG_COLORS.text_secondary, marginTop: 6 }}>{tier}</div>
+              <div style={{ fontSize: 30, fontWeight: 600, color: OG_COLORS.text_secondary, marginTop: 6 }}>{tier}</div>
             </div>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, width: 400, paddingTop: 8 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+            <div style={{ fontSize: 25, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
               {lang === "en" ? "Index Structure" : "Структура индекса"}
             </div>
             {segments.map((seg) => {
@@ -213,9 +210,9 @@ export async function GET(request: Request) {
               return (
                 <div key={seg.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{ width: 10, height: 10, borderRadius: 2, background: seg.color, flexShrink: 0 }} />
-                  <span style={{ flex: 1, fontSize: 13, color: OG_COLORS.text_secondary }}>{label}</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: seg.color, fontFamily: "monospace", width: 48, textAlign: "right" }}>{sign}{seg.contribution.toFixed(1)}</span>
-                  <span style={{ width: 36, textAlign: "right", fontSize: 11, color: OG_COLORS.text_muted, fontFamily: "monospace" }}>{share}%</span>
+                  <span style={{ flex: 1, fontSize: 20, color: OG_COLORS.text_secondary }}>{label}</span>
+                  <span style={{ fontSize: 20, fontWeight: 700, color: seg.color, fontFamily: "monospace", width: 48, textAlign: "right" }}>{sign}{seg.contribution.toFixed(1)}</span>
+                  <span style={{ width: 36, textAlign: "right", fontSize: 13, color: OG_COLORS.text_muted, fontFamily: "monospace" }}>{share}%</span>
                 </div>
               );
             })}

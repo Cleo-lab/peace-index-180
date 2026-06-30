@@ -1,35 +1,29 @@
 // lib/og-colors.ts
 // OG Image Palette — HEX-эквиваленты oklch-цветов из colors.ts
-// Satori (@vercel/og) не поддерживает oklch, поэтому используем HEX.
-// Цвета максимально приближены к оригинальным oklch-значениям.
 
 export const OG_COLORS = {
-  // ===== Цвета тиров вероятности =====
-  war: "#c41e3a",           // oklch(0.55 0.24 22) → deep rose
-  escalation: "#e85d04",    // oklch(0.70 0.19 55) → orange
-  stalemate: "#9ca3af",     // oklch(0.7 0 0) → neutral gray
-  peace_tendency: "#f59e0b", // oklch(0.78 0.16 80) → amber
-  high_peace: "#10b981",    // oklch(0.72 0.19 152) → emerald
+  war: "#c41e3a",
+  escalation: "#e85d04",
+  stalemate: "#9ca3af",
+  peace_tendency: "#f59e0b",
+  high_peace: "#10b981",
 
-  // ===== Цвета групп маркеров =====
-  finance: "#059669",       // oklch(0.65 0.18 145) → emerald
-  law: "#84cc16",           // oklch(0.78 0.16 95) → lime/yellow-green
-  escalation_group: "#991b1b", // oklch(0.55 0.24 25) → deep red
-  ukraine_military: "#be123c", // oklch(0.60 0.20 10) → rose
-  russia: "#ea580c",        // oklch(0.70 0.19 55) → orange
-  politics: "#c026d3",      // oklch(0.60 0.22 320) → magenta/purple
+  finance: "#059669",
+  law: "#84cc16",
+  escalation_group: "#991b1b",
+  ukraine_military: "#be123c",
+  russia: "#ea580c",
+  politics: "#c026d3",
 
-  // ===== Фон и текст =====
-  bg_dark: "#0f172a",      // slate-900
-  bg_card: "#1e293b",      // slate-800
-  text_primary: "#f8fafc",  // slate-50
-  text_secondary: "#94a3b8", // slate-400
-  text_muted: "#64748b",    // slate-500
-  text_url: "#475569",       // slate-600
-  track_bg: "#334155",       // slate-700
+  bg_dark: "#000000",      // ← ЧЁРНЫЙ фон
+  bg_card: "#0a0a0a",      // ← Тоже чёрный
+  text_primary: "#f8fafc",
+  text_secondary: "#94a3b8",
+  text_muted: "#64748b",
+  text_url: "#475569",
+  track_bg: "#334155",
 } as const;
 
-// Функция получения цвета группы для OG
 export function ogGroupColor(groupKey: string): string {
   const map: Record<string, string> = {
     finance: OG_COLORS.finance,
@@ -42,7 +36,6 @@ export function ogGroupColor(groupKey: string): string {
   return map[groupKey] ?? OG_COLORS.stalemate;
 }
 
-// Функция получения цвета по значению вероятности
 export function ogProbabilityColor(p: number): string {
   if (p <= -60) return OG_COLORS.war;
   if (p <= -20) return OG_COLORS.escalation;
@@ -62,7 +55,7 @@ export function ogTierLabel(p: number, lang: "ru" | "en"): string {
   return lang === "en" ? "Peace" : "Мир";
 }
 
-// Подписи групп на двух языках (короткие для OG-картинки)
+// Подписи групп на двух языках
 export const OG_GROUP_LABELS: Record<string, { ru: string; en: string }> = {
   finance: { ru: "Международные финансы", en: "Int'l Finance" },
   law: { ru: "Законодательство", en: "Legislation" },
@@ -71,4 +64,3 @@ export const OG_GROUP_LABELS: Record<string, { ru: string; en: string }> = {
   russia: { ru: "Маркеры РФ", en: "Russia" },
   politics: { ru: "Политика", en: "Politics" },
 };
-

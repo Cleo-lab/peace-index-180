@@ -1,13 +1,13 @@
 // app/api/og/route.tsx
-// OG-спидометр с реальными сегментами групп (как в виджете)
+// OG-спидометр с реальными сегментами групп
 
-import { ImageResponse } from "@vercel/og";
+import { ImageResponse } from "next/og";
 import { OG_COLORS, ogProbabilityColor, ogTierLabel, ogGroupColor } from "@/lib/og-colors";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
-// ===== Математика спидометра (1:1 как в speedometer-gauge.tsx) =====
+// ===== Математика спидометра =====
 const CX = 260;
 const CY = 180;
 const R = 140;
@@ -54,14 +54,19 @@ export async function GET(request: Request) {
   }> = [];
 
   try {
-    const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000";
+    const url = new URL(request.url);
+    const baseUrl = `${url.protocol}//${url.host}`;
+    
     const res = await fetch(`${baseUrl}/api/status`, { cache: "no-store" });
     if (res.ok) {
       const data = await res.json();
       value = data.aggregate?.totalProbability ?? 0;
 
       if (data.calcDate) {
-        dateStr = new Date(data.calcDate).toLocaleDateString(lang === "ru" ? "ru-RU" : "en-US", { day: "numeric", month: "long", year: "numeric" });
+        dateStr = new Date(data.calcDate).toLocaleDateString(
+          lang === "ru" ? "ru-RU" : "en-US", 
+          { day: "numeric", month: "long", year: "numeric" }
+        );
       }
 
       const markers: any[] = data.markers ?? [];
@@ -119,35 +124,29 @@ export async function GET(request: Request) {
   const nb1 = polar(CX, CY, 8, needleAngle + 90);
   const nb2 = polar(CX, CY, 8, needleAngle - 90);
 
-  const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000";
-  const iconUrl = `${baseUrl}/icon-512.png`;
-
-  // ===== Считаем сегменты дуги как в виджете =====
   const positiveSegments = segments.filter((s) => s.contribution > 0);
   const negativeSegments = segments.filter((s) => s.contribution < 0);
   const totalPositive = positiveSegments.reduce((s, x) => s + x.contribution, 0);
   const totalNegative = Math.abs(negativeSegments.reduce((s, x) => s + x.contribution, 0));
 
-  // Левая сторона (-100..0): отрицательные группы
   const leftArcs: Array<{ start: number; end: number; color: string }> = [];
   if (totalNegative > 0) {
-    let cursor = 360; // 0° = 360° в нашей системе
+    let cursor = 360;
     for (const seg of negativeSegments) {
       const portion = Math.abs(seg.contribution) / totalNegative;
-      const angleSpan = portion * 135; // 360° → 225° (135°)
+      const angleSpan = portion * 135;
       const end = cursor - angleSpan;
       leftArcs.push({ start: Math.max(end, 225), end: cursor, color: seg.color });
       cursor = end;
     }
   }
 
-  // Правая сторона (0..+100): положительные группы
   const rightArcs: Array<{ start: number; end: number; color: string }> = [];
   if (totalPositive > 0) {
-    let cursor = 360; // 0° = 360°
+    let cursor = 360;
     for (const seg of positiveSegments) {
       const portion = seg.contribution / totalPositive;
-      const angleSpan = portion * 135; // 360° → 495° (135°)
+      const angleSpan = portion * 135;
       const end = cursor + angleSpan;
       rightArcs.push({ start: cursor, end: Math.min(end, 495), color: seg.color });
       cursor = end;
@@ -157,37 +156,27 @@ export async function GET(request: Request) {
   return new ImageResponse(
     (
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: `linear-gradient(135deg, ${OG_COLORS.bg_dark} 0%, ${OG_COLORS.bg_card} 100%)`, color: OG_COLORS.text_primary, fontFamily: "system-ui, -apple-system, sans-serif", padding: 36 }}>
-        {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <img src={iconUrl} width="44" height="44" style={{ borderRadius: 12 }} />
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <div style={{ fontSize: 24, fontWeight: 700 }}>{title}</div>
-              <div style={{ fontSize: 14, color: OG_COLORS.text_secondary }}>{subtitle}</div>
-            </div>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ fontSize: 24, fontWeight: 700 }}>{title}</div>
+            <div style={{ fontSize: 14, color: OG_COLORS.text_secondary }}>{subtitle}</div>
           </div>
           <div style={{ fontSize: 14, color: OG_COLORS.text_muted }}>{dateStr}</div>
         </div>
 
-        {/* Main */}
         <div style={{ display: "flex", flex: 1, alignItems: "center", gap: 24 }}>
-          {/* Gauge */}
           <div style={{ width: 520, height: 360, display: "flex", flexDirection: "column", alignItems: "center" }}>
             <svg width="520" height="300" viewBox="0 0 520 300">
-              {/* Фоновая дуга */}
               <path d={arcPath(CX, CY, R, 225, 495)} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={STROKE} />
 
-              {/* Левая сторона: отрицательные сегменты */}
               {leftArcs.map((arc, i) => (
                 <path key={`L${i}`} d={arcPath(CX, CY, R, arc.start, arc.end)} fill="none" stroke={arc.color} strokeWidth={STROKE} strokeLinecap="butt" />
               ))}
 
-              {/* Правая сторона: положительные сегменты */}
               {rightArcs.map((arc, i) => (
                 <path key={`R${i}`} d={arcPath(CX, CY, R, arc.start, arc.end)} fill="none" stroke={arc.color} strokeWidth={STROKE} strokeLinecap="butt" />
               ))}
 
-              {/* Мелкие тики */}
               {MINOR_TICKS.map((t) => {
                 const a = valueToAngle(t);
                 const p1 = polar(CX, CY, R + STROKE / 2 + 2, a);
@@ -195,7 +184,6 @@ export async function GET(request: Request) {
                 return <line key={`m${t}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="rgba(255,255,255,0.25)" strokeWidth={1} />;
               })}
 
-              {/* Major тики */}
               {MAJOR_TICKS.map((t) => {
                 const a = valueToAngle(t);
                 const p1 = polar(CX, CY, R + STROKE / 2 + 2, a);
@@ -203,20 +191,17 @@ export async function GET(request: Request) {
                 return <line key={`M${t}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="rgba(255,255,255,0.7)" strokeWidth={2.5} />;
               })}
 
-              {/* Стрелка */}
               <polygon points={`${nb1.x.toFixed(1)},${nb1.y.toFixed(1)} ${nb2.x.toFixed(1)},${nb2.y.toFixed(1)} ${needleEnd.x.toFixed(1)},${needleEnd.y.toFixed(1)}`} fill="#f5f5f5" />
               <circle cx={CX} cy={CY} r={10} fill="#f5f5f5" />
               <circle cx={CX} cy={CY} r={4} fill={OG_COLORS.bg_dark} />
             </svg>
 
-            {/* Цифра + Tier */}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: -70 }}>
               <div style={{ fontSize: 64, fontWeight: 800, color, lineHeight: 1, textShadow: "0 2px 8px rgba(0,0,0,0.5)" }}>{formatted}</div>
               <div style={{ fontSize: 22, fontWeight: 600, color: OG_COLORS.text_secondary, marginTop: 6 }}>{tier}</div>
             </div>
           </div>
 
-          {/* Legend */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10, width: 400, paddingTop: 8 }}>
             <div style={{ fontSize: 14, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
               {lang === "en" ? "Index Structure" : "Структура индекса"}
@@ -237,7 +222,6 @@ export async function GET(request: Request) {
           </div>
         </div>
 
-        {/* Footer */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14, paddingTop: 12, borderTop: `1px solid ${OG_COLORS.track_bg}` }}>
           <div style={{ fontSize: 12, color: OG_COLORS.text_muted }}>{lang === "en" ? "AI-powered analytics based on open data" : "AI-аналитика на основе открытых данных"}</div>
           <div style={{ fontSize: 12, color: OG_COLORS.text_url }}>peace-index-180.vercel.app</div>

@@ -346,6 +346,17 @@ export const MARKERS: MarkerDef[] = [
     logic: "Aggregate sentiment shift toward de-escalation = weak positive (+5 to +15). Widespread panic or escalation predictions = weak negative (-5 to -15). High noise, low signal — limited weight.",
     sources: ["Top-10 OSINT Telegram channels"],
   },
+  {
+    id: "MAJOR_DIPLOMATIC_SIGNALS",
+    code: "M25",
+    name: "Major Diplomatic & Third-Party Signals",
+    nameRu: "Значимые дипломатические и внешние сигналы",
+    group: "politics",
+    weight: 3,
+    searchQuery: `Ukraine war Russia diplomacy visit call talks leaders meeting ${years}`,
+    logic: "Captures high-profile visits, leader-to-leader calls, and third-party (business, allied-state) engagement related to the war that narrower markers may miss (e.g. a foreign tech/defense executive visiting Kyiv, a call between two heads of state discussing the war). Direction depends strictly on content, assessed neutrally without moral judgment: engagement signaling openness to negotiation, reconstruction investment, or de-escalation = mild positive (+10 to +25); engagement reaffirming continued war posture or new military coordination = mild negative (-10 to -25). This marker exists primarily for situational completeness — given its low weight, it should not meaningfully swing the aggregate, but should surface notable facts in the UI so the index reflects awareness of major news even outside the 24 core markers.",
+    sources: ["Reuters", "AP", "official statements"],
+  },
 ];
 
 export const MARKER_MAP: Record<string, MarkerDef> = Object.fromEntries(

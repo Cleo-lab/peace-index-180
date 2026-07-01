@@ -20,6 +20,10 @@ Your output MUST be strict JSON without markdown formatting.
 
 CURRENT_DATE (today): ${currentDateStr}
 ANALYSIS_HORIZON: ${currentDateStr} → ${addDaysStr(currentDateStr, HORIZON_DAYS)} (${HORIZON_DAYS} days)
+NEUTRALITY:
+- This index does not take sides and does not assign moral, legal, or ethical judgment to any party's actions.
+- Assess only observable, verifiable facts and their plausible bearing on the likelihood of peace or escalation within the horizon.
+- Describe statements and actions by any leader or party in neutral, factual language, without editorializing.
 
 SCALE DEFINITION (-100 to +100):
 • +100 = Guaranteed durable peace: signed treaties, massive foreign reconstruction investments ($50B+), demilitarized zones, full prisoner exchanges.
@@ -293,34 +297,62 @@ export async function calculateAggregate(
     return { totalProbability: 0, summaryEn: "No marker data available." };
   }
 
-  // === Подсчёт заглушек ===
-  const lowConfidenceCount = scores.filter(s => s.confidence === "LOW").length;
-  const stubCount = scores.filter(s => 
-    s.confidence === "LOW" && s.rationaleEn.includes("No recent news")
-  ).length;
+  // === Подсчёт заглушек (маркеров без каких-либо новостей вообще) ===
+  const isStub = (s: (typeof scores)[number]) =>
+    s.confidence === "LOW" && s.rationaleEn.includes("No recent news");
+
+  const stubCount = scores.filter(isStub).length;
   const coveragePercent = Math.round(((scores.length - stubCount) / scores.length) * 100);
-  
-  // === Вычисление взвешенного среднего ===
+
+  // === Вычисление взвешенного среднего с учётом надёжности маркера ===
+  // Было: плоский штраф "-4 очка к итогу за каждый тяжёлый (weight>8) LOW-маркер",
+  // применявшийся ПОСЛЕ расчёта и механически тянувший индекс к нулю.
+  // Стало: эффективный вес маркера пропорционально снижается по confidence
+  // ДО усреднения. Заглушки (нет новостей вообще) исключаются из суммы весов
+  // полностью — больше не размывают среднее фейковым fallback-значением.
+  const CONFIDENCE_MULTIPLIER: Record<Confidence, number> = {
+    HIGH: 1.0,
+    MEDIUM: 1.0,
+    LOW: 0.5,
+  };
+
   let weightedSum = 0;
   let weightSum = 0;
+  let rawWeightedSum = 0;
+  let rawWeightSum = 0;
+
   for (const s of scores) {
-    weightedSum += s.weight * s.probability;
-    weightSum += s.weight;
-  }
-  let total = weightSum > 0 ? weightedSum / weightSum : 0;
+    rawWeightedSum += s.weight * s.probability;
+    rawWeightSum += s.weight;
 
-  const heavyLow = scores.filter(
-    (s) => s.weight > 8 && s.confidence === "LOW",
-  ).length;
-
-  const penalty = heavyLow * 4;
-  if (total > 0) {
-    total = Math.max(0, total - penalty);
-  } else if (total < 0) {
-    total = Math.min(0, total + penalty);
+    const multiplier = isStub(s) ? 0 : CONFIDENCE_MULTIPLIER[s.confidence];
+    const effectiveWeight = s.weight * multiplier;
+    weightedSum += effectiveWeight * s.probability;
+    weightSum += effectiveWeight;
   }
 
+  // Защита от вырожденного случая: если ВСЕ маркеры — заглушки (весь сбор
+  // данных за день не удался), не роняем индекс в 0 молча, а откатываемся
+  // на сырое среднее, чтобы не потерять сигнал полностью.
+  let total: number;
+  if (weightSum > 0) {
+    total = weightedSum / weightSum;
+  } else if (rawWeightSum > 0) {
+    console.warn("[analyzer] all markers are stubs — falling back to raw weighted average");
+    total = rawWeightedSum / rawWeightSum;
+  } else {
+    total = 0;
+  }
   total = clamp(Math.round(total), -100, 100);
+
+  const rawTotal =
+    rawWeightSum > 0 ? clamp(Math.round(rawWeightedSum / rawWeightSum), -100, 100) : 0;
+
+  console.log(
+    `[analyzer] aggregate: raw=${rawTotal}, confidence-adjusted=${total}, ` +
+      `coverage=${coveragePercent}% (${scores.length - stubCount}/${scores.length} markers with real data), ` +
+      `effective weight used=${Math.round(weightSum)}/${Math.round(rawWeightSum)}`,
+  );
 
   const todayStr = fmtDateISO(startOfTodayUTC());
   const markersBrief = scores

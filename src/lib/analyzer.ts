@@ -43,13 +43,20 @@ RULES:
 6. If the latest event in INPUT_DATA is older than ${STALE_THRESHOLD_DAYS} days from CURRENT_DATE, set confidence to "LOW" and bias toward 0 (uncertainty).
 7. When multiple contradictory signals exist, weight financial/investment signals higher than political rhetoric.
 
+ENTITY COMMITMENT TRACKING (relevant mainly to finance/law markers):
+- If INPUT_DATA names a specific institutional actor (an investment fund, bank, insurer, government agency, or legislative body) making or updating a concrete financial or legal commitment (an investment amount, guarantee, law, tender outcome), add one entry per such actor to "entity_updates".
+- If PREVIOUSLY RECORDED COMMITMENTS are provided below, compare the current claim against the most recent one for the same actor and set "stance" accordingly: NEW (first time seen), REAFFIRMED (same commitment restated), INCREASED, REDUCED, or WITHDRAWN.
+- A REDUCED or WITHDRAWN commitment is a meaningful negative signal for this marker's score even if the underlying activity has not fully stopped — it reflects reduced confidence, and your probability score should account for it.
+- Leave "entity_updates" as an empty array if no specific institutional actor with a concrete commitment is mentioned. Do not invent entities, amounts, or dates.
+
 OUTPUT JSON SCHEMA:
 {
   "probability": <int between -100 and 100>,
   "trend": "<UP|DOWN|FLAT>",
   "confidence": "<HIGH|MEDIUM|LOW>",
   "rationale_en": "<2-3 sentences explaining the logic, referencing specific events and scores>",
-  "key_facts": [{"fact": "...", "url": "..."}]
+  "key_facts": [{"fact": "...", "url": "..."}],
+  "entity_updates": [{"entity_name": "...", "stance": "<NEW|REAFFIRMED|INCREASED|REDUCED|WITHDRAWN>", "claim_summary": "...", "claim_date": "<YYYY-MM-DD>", "url": "..."}]
 }`;
 }
 
@@ -58,12 +65,28 @@ export interface KeyFact {
   url: string;
 }
 
+export type EntityStance = "NEW" | "REAFFIRMED" | "INCREASED" | "REDUCED" | "WITHDRAWN";
+
+export interface EntityUpdate {
+  entityName: string;
+  stance: EntityStance;
+  claimSummary: string;
+  claimDate: string; // ISO YYYY-MM-DD, как вернула модель
+  url: string;
+}
+
+/// Группы маркеров, для которых имеет смысл отслеживать позиции институциональных
+/// игроков во времени — структурные, долгоиграющие сигналы (инвесторы, страховщики,
+/// законодатели). Эскалационные/военные/политические маркеры это поле не используют.
+const ENTITY_TRACKED_GROUPS = new Set(["finance", "law"]);
+
 export interface MarkerAnalysis {
   probability: number;
   trend: Trend;
   confidence: Confidence;
   rationaleEn: string;
   keyFacts: KeyFact[];
+  entityUpdates: EntityUpdate[];
 }
 
 export interface AggregateResult {
@@ -95,6 +118,21 @@ function extractJson(raw: string): unknown {
 
 function clamp(n: number, min = -100, max = 100): number {
   return Math.max(min, Math.min(max, n));
+}
+
+/// Форматирует последние зафиксированные позиции институциональных игроков для
+/// вставки в промпт — модель сравнивает новые новости с этим списком.
+function formatEntityCommitments(
+  rows: { entityName: string; claimSummary: string; claimDate: Date; stance: string }[],
+): string {
+  if (rows.length === 0) {
+    return "PREVIOUSLY RECORDED COMMITMENTS: none on record yet for this marker.";
+  }
+  const lines = rows.map((r) => {
+    const d = r.claimDate.toISOString().slice(0, 10);
+    return `- [${d}] ${r.entityName}: ${r.claimSummary} (last known stance: ${r.stance})`;
+  });
+  return `PREVIOUSLY RECORDED COMMITMENTS (most recent first):\n${lines.join("\n")}`;
 }
 
 function formatNewsData(news: NewsItem[]): string {
@@ -179,7 +217,27 @@ if (news.length === 0) {
         `A neutral low-confidence estimate (${fallback > 0 ? "+" : ""}${fallback}) is applied based on the marker's group baseline; ` +
         `this marker carries reduced weight in today's aggregate.`,
       keyFacts: [],
+      entityUpdates: [],
     };
+  }
+
+  // Для структурных маркеров (finance/law) подтягиваем последние зафиксированные
+  // позиции институциональных игроков — модель сравнит новые новости с ними и
+  // отличит "подтверждение" от "пересмотра вниз/отзыва".
+  const tracksEntities = ENTITY_TRACKED_GROUPS.has(marker.group);
+  let entityContext = "";
+  if (tracksEntities) {
+    try {
+      const recentCommitments = await db.entityCommitment.findMany({
+        where: { markerId: marker.id },
+        orderBy: { claimDate: "desc" },
+        take: 5,
+      });
+      entityContext = formatEntityCommitments(recentCommitments);
+    } catch (err) {
+      console.error(`[analyzer] failed to load entity commitments for ${marker.id}:`, err);
+      entityContext = "PREVIOUSLY RECORDED COMMITMENTS: unavailable (lookup failed).";
+    }
   }
 
   const userInput = `CURRENT_DATE: ${todayStr}
@@ -189,7 +247,7 @@ GROUP: ${marker.group}
 MARKER_LOGIC: ${marker.logic}
 
 ${formatNewsData(news)}
-
+${tracksEntities ? `\n${entityContext}\n` : ""}
 QUESTION: Based on the news data above, estimate the Peace/Escalation score (from -100 to +100) for Ukraine within the next ${HORIZON_DAYS} days (horizon: ${todayStr} → ${addDaysStr(todayStr, HORIZON_DAYS)}), considering this marker's logic and group.
 
 SCORING GUIDANCE:
@@ -202,14 +260,15 @@ SCORING GUIDANCE:
 When checking freshness: compare each news date to CURRENT_DATE (${todayStr}). News older than ${addDaysStr(todayStr, -STALE_THRESHOLD_DAYS)} is stale.
 
 In "key_facts", you MUST include URLs from the INPUT_DATA above to verify claims. Do not invent URLs.
-
+${tracksEntities ? `\nIf a specific institutional actor (fund, bank, insurer, agency, legislature) makes or updates a concrete commitment, populate "entity_updates" — compare against PREVIOUSLY RECORDED COMMITMENTS above and set the correct stance. Otherwise leave it empty.\n` : ""}
 Return JSON only with this schema:
 {
   "probability": <int between -100 and 100>,
   "trend": "<UP|DOWN|FLAT>",
   "confidence": "<HIGH|MEDIUM|LOW>",
   "rationale_en": "<2-3 sentences explaining the logic, referencing specific recent events and numerical score>",
-  "key_facts": [{"fact": "...", "url": "..."}]
+  "key_facts": [{"fact": "...", "url": "..."}],
+  "entity_updates": [{"entity_name": "...", "stance": "<NEW|REAFFIRMED|INCREASED|REDUCED|WITHDRAWN>", "claim_summary": "...", "claim_date": "<YYYY-MM-DD>", "url": "..."}]
 }`;
 
   let raw = "";
@@ -224,6 +283,7 @@ Return JSON only with this schema:
       confidence: "LOW",
       rationaleEn: `Analysis unavailable due to a model error. Fallback estimate (${fallback > 0 ? "+" : ""}${fallback}) applied based on marker group baseline.`,
       keyFacts: [],
+      entityUpdates: [],
     };
   }
 
@@ -233,6 +293,7 @@ Return JSON only with this schema:
     confidence?: string;
     rationale_en?: string;
     key_facts?: { fact?: string; url?: string }[];
+    entity_updates?: { entity_name?: string; stance?: string; claim_summary?: string; claim_date?: string; url?: string }[];
   };
   try {
     parsed = extractJson(raw) as typeof parsed;
@@ -245,6 +306,7 @@ Return JSON only with this schema:
       confidence: "LOW",
       rationaleEn: "The model returned a non-JSON response; fallback estimate applied.",
       keyFacts: [],
+      entityUpdates: [],
     };
   }
 
@@ -275,12 +337,37 @@ Return JSON only with this schema:
     ? (parsed.trend as string).toUpperCase()
     : "FLAT") as Trend;
 
+  // Та же анти-галлюцинационная проверка, что и для key_facts: URL обязан быть
+  // из реально предоставленных новостей, иначе запись отбрасывается.
+  const VALID_STANCES = new Set(["NEW", "REAFFIRMED", "INCREASED", "REDUCED", "WITHDRAWN"]);
+  const entityUpdates: EntityUpdate[] = tracksEntities
+    ? (parsed.entity_updates ?? [])
+        .filter(
+          (u) =>
+            u.entity_name &&
+            u.stance &&
+            VALID_STANCES.has(u.stance.toUpperCase()) &&
+            u.claim_summary &&
+            u.claim_date &&
+            u.url &&
+            allowedUrls.has(u.url),
+        )
+        .map((u) => ({
+          entityName: u.entity_name!.trim(),
+          stance: u.stance!.toUpperCase() as EntityStance,
+          claimSummary: u.claim_summary!.trim(),
+          claimDate: u.claim_date!,
+          url: u.url!,
+        }))
+    : [];
+
   return {
     probability: clamp(Math.round(Number(parsed.probability) || 0), -100, 100),
     trend,
     confidence: enforcedConfidence,
     rationaleEn: parsed.rationale_en?.trim() || "No rationale provided by the model.",
     keyFacts,
+    entityUpdates,
   };
 }
 
@@ -442,6 +529,51 @@ export async function saveMarkerScore(
   });
 }
 
+/// Сохраняет/обновляет зафиксированные позиции институциональных игроков по маркеру.
+/// Один и тот же (markerId, sourceUrl, entityName) не дублируется — upsert.
+/// Ошибка по одной записи не должна ронять весь прогон — try/catch на каждую.
+export async function saveEntityCommitments(
+  calcDate: Date,
+  marker: MarkerDef,
+  updates: EntityUpdate[],
+): Promise<void> {
+  for (const u of updates) {
+    const parsedDate = new Date(u.claimDate);
+    const claimDate = isNaN(parsedDate.getTime()) ? calcDate : parsedDate;
+    try {
+      await db.entityCommitment.upsert({
+        where: {
+          markerId_sourceUrl_entityName: {
+            markerId: marker.id,
+            sourceUrl: u.url,
+            entityName: u.entityName,
+          },
+        },
+        create: {
+          markerId: marker.id,
+          entityName: u.entityName,
+          stance: u.stance,
+          claimSummary: u.claimSummary,
+          claimDate,
+          sourceUrl: u.url,
+          calcDate,
+        },
+        update: {
+          stance: u.stance,
+          claimSummary: u.claimSummary,
+          claimDate,
+          calcDate,
+        },
+      });
+    } catch (err) {
+      console.error(
+        `[analyzer] failed to save entity commitment for ${marker.id}/${u.entityName}:`,
+        err,
+      );
+    }
+  }
+}
+
 export async function saveAggregate(
   calcDate: Date,
   result: AggregateResult,
@@ -503,6 +635,9 @@ export async function runFullAnalysis(
       rationaleEn: analysis.rationaleEn,
     });
     await saveMarkerScore(calcDate, marker, analysis);
+    if (analysis.entityUpdates.length > 0) {
+      await saveEntityCommitments(calcDate, marker, analysis.entityUpdates);
+    }
   }
 
   // ===== Этап 2: агрегация =====

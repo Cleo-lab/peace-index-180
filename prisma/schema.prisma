@@ -51,6 +51,28 @@ model MarkerScore {
   @@index([calcDate])
 }
 
+/// Отслеживание позиций конкретных институциональных игроков (инвесторов, страховщиков,
+/// законодателей) по финансовым/юридическим маркерам во времени — чтобы отличать
+/// "подтверждение прежней позиции" от "пересмотра вниз / отзыва" (например, BlackRock
+/// снизил заявленную сумму инвестиций с $100 млрд до $30 млрд). Используется как
+/// контекст для LLM при анализе следующего дня по тому же маркеру.
+model EntityCommitment {
+  id           String   @id @default(cuid())
+  markerId     String
+  entityName   String   // "BlackRock", "MIGA", "EBRD"... — как выдала модель
+  stance       String   // NEW | REAFFIRMED | INCREASED | REDUCED | WITHDRAWN
+  claimSummary String   // краткое описание на английском
+  claimDate    DateTime // дата события/заявления (не дата расчёта)
+  sourceUrl    String
+  calcDate     DateTime // дата прогона, которым это было зафиксировано
+  createdAt    DateTime @default(now())
+
+  // Один и тот же источник по одной и той же сущности в рамках маркера не дублируется —
+  // повторный проход по той же статье обновляет запись, а не создаёт копию.
+  @@unique([markerId, sourceUrl, entityName])
+  @@index([markerId, entityName, claimDate])
+}
+
 /// Итоговая агрегированная оценка за дату (аналог aggregates).
 /// ШКАЛА: totalProbability ∈ [-100, +100] — взвешенное среднее по всем маркерам.
 /// Интерпретация:

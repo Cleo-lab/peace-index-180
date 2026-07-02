@@ -231,6 +231,27 @@ const MARKER_RESPONSE_SCHEMA = {
         required: ["fact", "url"],
       },
     },
+    // Отслеживание позиций конкретных институциональных игроков (инвесторов,
+    // страховщиков, законодателей) — заполняется, только когда в новостях назван
+    // конкретный актор с конкретным финансовым/юридическим заявлением. В остальных
+    // случаях — пустой массив.
+    entity_updates: {
+      type: "array" as const,
+      items: {
+        type: "object" as const,
+        properties: {
+          entity_name: { type: "string" as const },
+          stance: {
+            type: "string" as const,
+            enum: ["NEW", "REAFFIRMED", "INCREASED", "REDUCED", "WITHDRAWN"],
+          },
+          claim_summary: { type: "string" as const },
+          claim_date: { type: "string" as const },
+          url: { type: "string" as const },
+        },
+        required: ["entity_name", "stance", "claim_summary", "claim_date", "url"],
+      },
+    },
   },
   required: [
     "probability",
@@ -238,6 +259,7 @@ const MARKER_RESPONSE_SCHEMA = {
     "confidence",
     "rationale_en",
     "key_facts",
+    "entity_updates",
   ],
 };
 

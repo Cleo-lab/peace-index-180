@@ -445,7 +445,7 @@ export async function calculateAggregate(
   const markersBrief = scores
     .map(
       (s) =>
-        `{"id":"${s.markerId}","weight":${s.weight},"score":${s.probability},"confidence":"${s.confidence}","rationale":"${s.rationaleEn.replace(/"/g, "'").slice(0, 140)}"}`,
+        `{"id":"${s.markerId}","weight":${s.weight},"score":${s.probability},"confidence":"${s.confidence}","rationale":"${s.rationaleEn.replace(/"/g, "'").slice(0, 220)}"}`,
     )
     .join(",\n");
 
@@ -462,7 +462,9 @@ markers = [
 ${markersBrief}
 ]
 
-Write an executive summary (exactly 3 sentences, in English) explaining WHY the index stands at ${total} — name the 2-3 most influential positive or negative drivers. Use concrete examples from the markers' rationales.
+Write an executive summary (3-4 sentences, in English) explaining WHY the index stands at ${total}:
+1. In 1-2 sentences, name the 2-3 most statistically influential drivers (highest weight × score contribution). Use concrete examples from the markers' rationales.
+2. Then, separately, scan ALL markers' rationales above — regardless of their weight — for any mention of a large-scale, high-casualty single event within the last few days (e.g. a mass-casualty missile/drone strike on a city, a major escalation incident with significant reported deaths or injuries). If such an event is mentioned anywhere, add one factual, neutral sentence acknowledging it, even if that marker's weight is too low to be a statistical driver — this keeps the summary reflecting real-world events the reader would expect to see, not only the weighted math. If no such standout event appears in any marker's rationale, omit this sentence entirely — do not invent one.
 
 INTERPRETATION GUIDE:
 • +80 to +100: "Durable peace is becoming highly probable"

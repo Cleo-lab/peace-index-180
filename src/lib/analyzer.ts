@@ -42,6 +42,7 @@ RULES:
 5. Do not invent facts. In "key_facts", you MUST include URLs from INPUT_DATA to verify claims.
 6. If the latest event in INPUT_DATA is older than ${STALE_THRESHOLD_DAYS} days from CURRENT_DATE, set confidence to "LOW" and bias toward 0 (uncertainty).
 7. When multiple contradictory signals exist, weight financial/investment signals higher than political rhetoric.
+8. If INPUT_DATA contains multiple reports of similar or recurring events (e.g., repeated strikes on the same target type) at different dates, always center your rationale and score on the MOST RECENT occurrence. Do not describe or score based on an older event as if it were the latest development, even if it appears more prominently or repeatedly in the list.
 
 ENTITY COMMITMENT TRACKING (relevant mainly to finance/law markers):
 - If INPUT_DATA names a specific institutional actor (an investment fund, bank, insurer, government agency, or legislative body) making or updating a concrete financial or legal commitment (an investment amount, guarantee, law, tender outcome), add one entry per such actor to "entity_updates".

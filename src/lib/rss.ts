@@ -153,11 +153,21 @@ function parseRSSXml(xml: string, maxItems: number, query: string): NewsItem[] {
   }
 
   // СОРТИРОВКА: Сначала по релевантности, потом по свежести
-  items.sort((a, b) => {
-    const relDiff = b.relevance - a.relevance;
-    if (Math.abs(relDiff) > 0.15) return relDiff; // Значимая разница в релевантности
-    return b.date.getTime() - a.date.getTime(); // При равной релевантности — свежее выше
-  });
+  // Комбинированный балл: свежесть весит почти наравне с релевантностью.
+  // Раньше дата учитывалась только как тай-брейк при почти равной релевантности
+  // (разница ≤0.15) — из-за этого хорошо проиндексированная, но недельной давности
+  // статья систематически перебивала свежую, но чуть менее "плотную" по ключевым
+  // словам. Для маркеров эскалации это критично: модель должна видеть СЕГОДНЯШНЕЕ
+  // событие, а не пересказывать удар недельной давности только потому, что он лучше
+  // попал в поисковый запрос.
+  const now = Date.now();
+  function combinedScore(relevance: number, date: Date): number {
+    const daysOld = Math.max(0, (now - date.getTime()) / (1000 * 60 * 60 * 24));
+    const recency = Math.exp(-daysOld / 14); // мягкий спад, "период полураспада" ~14 дней
+    return relevance * 0.55 + recency * 0.45;
+  }
+
+  items.sort((a, b) => combinedScore(b.relevance, b.date) - combinedScore(a.relevance, a.date));
 
   // Возвращаем строго запрошенное количество самых релевантных новостей
   return items.slice(0, maxItems);

@@ -272,7 +272,7 @@ export const MARKERS: MarkerDef[] = [
     nameRu: "Удары по тылу (Украина)",
     group: "ukraine_military",
     weight: 5,
-    searchQuery: `Ukraine air alerts ballistic missile drone strike rear cities Kyiv Odesa Lviv ${years}`,
+    searchQuery: `Ukraine Kyiv Odesa Lviv missile drone strike attack killed casualties injured deaths rear cities air alerts ${years}`,
     logic: "Reduced frequency/duration of air alerts and rear strikes = positive (+15 to +30). A wave of strikes = negative (-40 to -60). A single strike causing mass casualties (dozens of reported deaths or injuries — e.g. a large-scale missile/drone attack on a major city like Kyiv) is a severe standalone signal = strong negative (-60 to -90), regardless of the broader weekly trend. Do not average a mass-casualty event down just because other days that week were calmer — treat it as the dominant fact for this marker.",
     sources: ["alerts.com.ua API"],
   },

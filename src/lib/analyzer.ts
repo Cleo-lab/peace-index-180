@@ -187,7 +187,7 @@ export async function analyzeMarker(marker: MarkerDef): Promise<MarkerAnalysis> 
   const today = startOfTodayUTC();
   const todayStr = fmtDateISO(today);
 
-  let news = await fetchGoogleNewsRSS(marker.searchQuery, 12);
+  let news = await fetchGoogleNewsRSS(marker.searchQuery, 18);
 
 // Fallback: если Google News пуст, берём из БД за последние 7 дней
 if (news.length === 0) {

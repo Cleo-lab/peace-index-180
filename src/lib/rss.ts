@@ -320,12 +320,15 @@ export async function fetchNews(
     try {
       const tavilyItems = await fetchTavilyNews(query, maxItems, daysWindow);
       if (tavilyItems.length >= Math.min(3, maxItems)) {
+        console.log(`[tavily] OK — ${tavilyItems.length} items for "${query}"`);
         return tavilyItems;
       }
       console.log(`[tavily] returned only ${tavilyItems.length} items for "${query}", falling back to RSS...`);
     } catch (err) {
       console.error(`[tavily] unexpected error for "${query}":`, err);
     }
+  } else {
+    console.warn(`[tavily] TAVILY_API_KEY is not set — skipping Tavily, using Google News RSS only.`);
   }
 
   // 2. Резерв — Google News RSS (прежняя логика, без изменений)

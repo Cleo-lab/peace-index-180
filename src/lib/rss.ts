@@ -32,6 +32,79 @@ export interface NewsItem {
 /// Пауза между запросами к RSS (ms)
 const RSS_DELAY_MS = 300;
 
+/// Основной источник новостей — Tavily Search API.
+/// В отличие от Google News RSS, Tavily:
+/// - сам оценивает релевантность (поле score) — не нужен наш грубый keyword-matching;
+/// - поддерживает нативный фильтр по свежести (days) — для эскалационных маркеров
+///   можно жёстко ограничить окно последними днями, не полагаясь на пересортировку.
+/// search_depth: "basic" — 1 кредит за вызов (бесплатный лимит — 1000 кредитов/мес).
+export async function fetchTavilyNews(
+  query: string,
+  maxItems = 12,
+  daysWindow = 30,
+): Promise<NewsItem[]> {
+  const apiKey = process.env.TAVILY_API_KEY;
+  if (!apiKey) return [];
+
+  try {
+    const res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: apiKey,
+        query,
+        topic: "news",
+        search_depth: "basic",
+        max_results: maxItems,
+        days: daysWindow,
+        include_answer: false,
+        include_raw_content: false,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) {
+      console.error(`[tavily] HTTP ${res.status} for: ${query}`);
+      return [];
+    }
+
+    const data = (await res.json()) as {
+      results?: Array<{
+        title?: string;
+        url?: string;
+        content?: string;
+        score?: number;
+        published_date?: string;
+      }>;
+    };
+
+    const items: NewsItem[] = (data.results ?? [])
+      .filter((r) => r.title && r.url)
+      .map((r) => {
+        const date = r.published_date ? new Date(r.published_date) : new Date();
+        let source = "unknown";
+        try {
+          source = new URL(r.url!).hostname.replace("www.", "");
+        } catch {
+          /* оставляем "unknown" */
+        }
+        return {
+          title: r.title!.trim(),
+          url: r.url!,
+          date: isNaN(date.getTime()) ? new Date() : date,
+          source,
+          snippet: (r.content || r.title || "").trim(),
+          relevance: typeof r.score === "number" ? Math.max(0, Math.min(1, r.score)) : 0.5,
+        };
+      });
+
+    return items;
+  } catch (err) {
+    console.error(`[tavily] fetch failed for "${query}":`, err);
+    return [];
+  }
+}
+
 /// Получает новости через Google News RSS по поисковому запросу.
 export async function fetchGoogleNewsRSS(
   query: string,
@@ -152,30 +225,25 @@ function parseRSSXml(xml: string, maxItems: number, query: string): NewsItem[] {
     });
   }
 
-  // СОРТИРОВКА: порог "действительно по теме" + чистая сортировка по дате внутри него.
-  //
-  // Предыдущая версия использовала смешанный балл (55% релевантность + 45% свежесть),
-  // но на реальном инциденте это не сработало: старая статья с очень плотным
-  // совпадением по ключевым словам (~0.85) всё равно обгоняла свежую, но менее
-  // "дословно" совпадающую статью про сегодняшнее событие (~0.42 релевантность,
-  // 0.93 свежести) — 0.76 против 0.65. Блендинг слишком мягкий, когда разрыв
-  // в релевантности большой, а именно так часто бывает: устоявшийся нарратив
-  // переиспользует формулировки поискового запроса лучше, чем горячая новость.
-  //
-  // Новый подход решительнее: сначала отсекаем совсем нерелевантный шум (порог),
-  // а среди всего, что прошло порог — то есть "действительно по теме" — дальше
-  // рулит ТОЛЬКО дата. Самая свежая статья по теме всегда побеждает более старую
-  // по теме, независимо от того, насколько плотнее она совпадает по словам.
-  const RELEVANCE_FLOOR = 0.35;
-  const passesFloor = items.filter((i) => i.relevance >= RELEVANCE_FLOOR);
-  // Защита от узких/нишевых маркеров: если порог отсёк почти всё (осталось меньше
-  // 5 статей), не рискуем остаться совсем без данных — используем полный список.
-  const pool = passesFloor.length >= Math.min(5, items.length) ? passesFloor : items;
+  // СОРТИРОВКА: Сначала по релевантности, потом по свежести
+  // Комбинированный балл: свежесть весит почти наравне с релевантностью.
+  // Раньше дата учитывалась только как тай-брейк при почти равной релевантности
+  // (разница ≤0.15) — из-за этого хорошо проиндексированная, но недельной давности
+  // статья систематически перебивала свежую, но чуть менее "плотную" по ключевым
+  // словам. Для маркеров эскалации это критично: модель должна видеть СЕГОДНЯШНЕЕ
+  // событие, а не пересказывать удар недельной давности только потому, что он лучше
+  // попал в поисковый запрос.
+  const now = Date.now();
+  function combinedScore(relevance: number, date: Date): number {
+    const daysOld = Math.max(0, (now - date.getTime()) / (1000 * 60 * 60 * 24));
+    const recency = Math.exp(-daysOld / 14); // мягкий спад, "период полураспада" ~14 дней
+    return relevance * 0.55 + recency * 0.45;
+  }
 
-  pool.sort((a, b) => b.date.getTime() - a.date.getTime());
+  items.sort((a, b) => combinedScore(b.relevance, b.date) - combinedScore(a.relevance, a.date));
 
-  // Возвращаем строго запрошенное количество самых свежих новостей по теме
-  return pool.slice(0, maxItems);
+  // Возвращаем строго запрошенное количество самых релевантных новостей
+  return items.slice(0, maxItems);
 }
 
 /// Вычисляет релевантность новости к поисковому запросу (0-1)
@@ -241,20 +309,34 @@ function decodeEntities(text: string): string {
     .replace(/&nbsp;/g, " ");
 }
 
-/// Универсальная функция сбора: пробует Google News RSS, затем NewsAPI fallback
+/// Универсальная функция сбора: Tavily (основной) → Google News RSS (резерв) → NewsAPI (последний резерв)
 export async function fetchNews(
   query: string,
   maxItems = 12,
+  daysWindow = 30,
 ): Promise<NewsItem[]> {
-  // Сначала пробуем Google News RSS
+  // 1. Основной источник — Tavily (свежее, с собственной релевантностью)
+  if (process.env.TAVILY_API_KEY) {
+    try {
+      const tavilyItems = await fetchTavilyNews(query, maxItems, daysWindow);
+      if (tavilyItems.length >= Math.min(3, maxItems)) {
+        return tavilyItems;
+      }
+      console.log(`[tavily] returned only ${tavilyItems.length} items for "${query}", falling back to RSS...`);
+    } catch (err) {
+      console.error(`[tavily] unexpected error for "${query}":`, err);
+    }
+  }
+
+  // 2. Резерв — Google News RSS (прежняя логика, без изменений)
   const rssItems = await fetchGoogleNewsRSS(query, maxItems);
-  
+
   if (rssItems.length >= maxItems * 0.5) {
     // Достаточно данных от RSS
     return rssItems;
   }
   
-  // Fallback на NewsAPI если мало данных
+  // 3. Последний резерв — NewsAPI если мало данных
   console.log(`[rss] Google News returned ${rssItems.length} items for "${query}", trying fallback...`);
   const fallbackItems = await fetchNewsAPIFallback(query, maxItems);
   

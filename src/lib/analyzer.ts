@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { llmComplete, llmCompleteText, sleep } from "@/lib/ai";
-import { fetchGoogleNewsRSS, type NewsItem } from "@/lib/rss";
+import { fetchNews, type NewsItem } from "@/lib/rss";
 import { getRecentEvents } from "@/lib/collector";
 import {
   MARKERS,
@@ -187,7 +187,15 @@ export async function analyzeMarker(marker: MarkerDef): Promise<MarkerAnalysis> 
   const today = startOfTodayUTC();
   const todayStr = fmtDateISO(today);
 
-  let news = await fetchGoogleNewsRSS(marker.searchQuery, 18);
+  // Эскалационным/военным/российским маркерам нужны СЕГОДНЯШНИЕ данные — короткое окно
+  // свежести (7 дней) не даёт недельной давности статье вытеснить сегодняшнюю в выдаче.
+  // Структурным (finance/law/politics) маркерам старые данные всё ещё релевантны —
+  // окно шире (30 дней), это соответствует принципу "решение инвестора не устаревает
+  // за неделю", который мы закладывали в отслеживание сущностей.
+  const RECENCY_SENSITIVE_GROUPS = new Set(["escalation", "ukraine_military", "russia"]);
+  const daysWindow = RECENCY_SENSITIVE_GROUPS.has(marker.group) ? 7 : 30;
+
+  let news = await fetchNews(marker.searchQuery, 18, daysWindow);
 
 // Fallback: если Google News пуст, берём из БД за последние 7 дней
 if (news.length === 0) {

@@ -68,6 +68,24 @@ export function startRecalculation(): { started: boolean; reason?: string } {
 /// Кэш переводов rationale/summary по (calcDate, markerId) и calcDate.
 const translationCache = new Map<string, string>();
 
+/// Коалесинг параллельных запросов: если перевод одного и того же ключа уже
+/// выполняется, второй (и третий, и...) параллельный запрос переиспользует тот же
+/// промис вместо того, чтобы запускать ещё один вызов Gemini на тот же текст.
+/// Важно для serverless: без этого N одновременных кликов "перевести" на один и
+/// тот же маркер тратят N вызовов дневного лимита впустую.
+const inFlight = new Map<string, Promise<string>>();
+
+async function withCoalescing(key: string, fn: () => Promise<string>): Promise<string> {
+  const existing = inFlight.get(key);
+  if (existing) return existing;
+
+  const promise = fn().finally(() => {
+    inFlight.delete(key);
+  });
+  inFlight.set(key, promise);
+  return promise;
+}
+
 /// Перевод rationale маркера на русский (с кэшем в БД).
 export async function translateMarkerRationale(
   calcDate: Date,
@@ -77,23 +95,30 @@ export async function translateMarkerRationale(
   const cached = translationCache.get(key);
   if (cached) return cached;
 
-  const score = await db.markerScore.findUnique({
-    where: { calcDate_markerId: { calcDate, markerId } },
-  });
-  if (!score) throw new Error("score not found");
+  return withCoalescing(key, async () => {
+    // Повторная проверка кэша: пока мы ждали своей очереди, другой запрос
+    // мог уже успеть сохранить перевод.
+    const cachedAgain = translationCache.get(key);
+    if (cachedAgain) return cachedAgain;
 
-  if (score.rationaleRu) {
-    translationCache.set(key, score.rationaleRu);
-    return score.rationaleRu;
-  }
+    const score = await db.markerScore.findUnique({
+      where: { calcDate_markerId: { calcDate, markerId } },
+    });
+    if (!score) throw new Error("score not found");
 
-  const ru = await translateToRussian(score.rationaleEn);
-  await db.markerScore.update({
-    where: { calcDate_markerId: { calcDate, markerId } },
-    data: { rationaleRu: ru },
+    if (score.rationaleRu) {
+      translationCache.set(key, score.rationaleRu);
+      return score.rationaleRu;
+    }
+
+    const ru = await translateToRussian(score.rationaleEn);
+    await db.markerScore.update({
+      where: { calcDate_markerId: { calcDate, markerId } },
+      data: { rationaleRu: ru },
+    });
+    translationCache.set(key, ru);
+    return ru;
   });
-  translationCache.set(key, ru);
-  return ru;
 }
 
 /// Перевод сводного summary на русский (с кэшем в БД).
@@ -104,19 +129,24 @@ export async function translateAggregateSummary(
   const cached = translationCache.get(key);
   if (cached) return cached;
 
-  const agg = await db.aggregate.findUnique({ where: { calcDate } });
-  if (!agg) throw new Error("aggregate not found");
+  return withCoalescing(key, async () => {
+    const cachedAgain = translationCache.get(key);
+    if (cachedAgain) return cachedAgain;
 
-  if (agg.summaryRu) {
-    translationCache.set(key, agg.summaryRu);
-    return agg.summaryRu;
-  }
+    const agg = await db.aggregate.findUnique({ where: { calcDate } });
+    if (!agg) throw new Error("aggregate not found");
 
-  const ru = await translateToRussian(agg.summaryEn);
-  await db.aggregate.update({
-    where: { calcDate },
-    data: { summaryRu: ru },
+    if (agg.summaryRu) {
+      translationCache.set(key, agg.summaryRu);
+      return agg.summaryRu;
+    }
+
+    const ru = await translateToRussian(agg.summaryEn);
+    await db.aggregate.update({
+      where: { calcDate },
+      data: { summaryRu: ru },
+    });
+    translationCache.set(key, ru);
+    return ru;
   });
-  translationCache.set(key, ru);
-  return ru;
 }

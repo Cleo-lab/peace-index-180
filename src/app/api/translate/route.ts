@@ -4,6 +4,7 @@ import {
   translateAggregateSummary,
 } from "@/lib/job";
 import { startOfTodayUTC } from "@/lib/analyzer";
+import { MARKER_MAP } from "@/lib/markers";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,14 @@ export async function POST(req: Request) {
       if (!body.markerId) {
         return NextResponse.json(
           { ok: false, error: "markerId-required" },
+          { status: 400 },
+        );
+      }
+      // Отсекаем произвольные строки до похода в БД — markerId должен быть
+      // одним из 25 реальных маркеров.
+      if (!MARKER_MAP[body.markerId]) {
+        return NextResponse.json(
+          { ok: false, error: "unknown-marker" },
           { status: 400 },
         );
       }

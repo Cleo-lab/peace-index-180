@@ -31,6 +31,7 @@ const VIEW_H = 400;
 const ARC_START = 225;
 const ARC_END = 495;
 const ARC_MID = 360;
+const ARC_HALF_SPAN = 135; // (ARC_END - ARC_START) / 2
 
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -113,13 +114,25 @@ export function SpeedometerGauge({
   const totalNegative = Math.abs(negativeSegments.reduce((s, x) => s + x.contribution, 0));
   const totalAbs = totalPositive + totalNegative;
 
+  // Бюджет угла на каждую сторону: пропорционален общей сумме |вклад| по ВСЕМ
+  // группам сразу (totalAbs), но не может превысить физически доступные 135° —
+  // иначе дуга "перетекает" за границу -100/+100 и ломается геометрически.
+  // Если одна сторона доминирует (напр. позитив = 89% общего вклада), она
+  // получает полные 135° (как и раньше), а миноритарная сторона сжимается к
+  // своей истинной малой доле — вместо того чтобы искусственно занимать
+  // ровно половину дуги наравне с доминирующей стороной.
+  const negSideSpan =
+    totalAbs > 0 ? Math.min(ARC_HALF_SPAN, (totalNegative / totalAbs) * (ARC_HALF_SPAN * 2)) : 0;
+  const posSideSpan =
+    totalAbs > 0 ? Math.min(ARC_HALF_SPAN, (totalPositive / totalAbs) * (ARC_HALF_SPAN * 2)) : 0;
+
   // ===== Левая сторона (-100..0) =====
   const leftSegments: Array<{ start: number; end: number; color: string; label: string; labelEn?: string }> = [];
   if (totalNegative > 0) {
     let cursor = ARC_MID;
     for (const seg of negativeSegments) {
       const portion = Math.abs(seg.contribution) / totalNegative;
-      const angleSpan = portion * 135;
+      const angleSpan = portion * negSideSpan;
       const end = cursor - angleSpan;
       leftSegments.push({
         start: Math.max(end, ARC_START),
@@ -138,7 +151,7 @@ export function SpeedometerGauge({
     let cursor = ARC_MID;
     for (const seg of positiveSegments) {
       const portion = seg.contribution / totalPositive;
-      const angleSpan = portion * 135;
+      const angleSpan = portion * posSideSpan;
       const end = cursor + angleSpan;
       rightSegments.push({
         start: cursor,

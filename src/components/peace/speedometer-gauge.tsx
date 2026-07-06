@@ -30,8 +30,7 @@ const VIEW_H = 400;
 
 const ARC_START = 225;
 const ARC_END = 495;
-const ARC_MID = 360;
-const ARC_HALF_SPAN = 135; // (ARC_END - ARC_START) / 2
+const ARC_SPAN = ARC_END - ARC_START; // 270°
 
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -40,7 +39,7 @@ function polar(cx: number, cy: number, r: number, angleDeg: number) {
 
 function valueToAngle(v: number): number {
   const normalized = Math.max(-100, Math.min(100, v));
-  return ARC_START + ((normalized + 100) / 200) * (ARC_END - ARC_START);
+  return ARC_START + ((normalized + 100) / 200) * ARC_SPAN;
 }
 
 function arcPath(cx: number, cy: number, r: number, a1: number, a2: number): string {
@@ -107,62 +106,30 @@ export function SpeedometerGauge({
   const centerColor = dark ? "#fff" : "#1a1a2e";
   const tierColor = dark ? "rgba(255,255,255,0.6)" : "#666";
 
-  const positiveSegments = segments.filter((s) => s.contribution > 0);
-  const negativeSegments = segments.filter((s) => s.contribution < 0);
+  // === СОРТИРОВКА: по убыванию |вклада|, слева направо ===
+  const sortedSegments = [...segments].sort(
+    (a, b) => Math.abs(b.contribution) - Math.abs(a.contribution)
+  );
+  const totalAbs = sortedSegments.reduce((s, x) => s + Math.abs(x.contribution), 0);
 
-  const totalPositive = positiveSegments.reduce((s, x) => s + x.contribution, 0);
-  const totalNegative = Math.abs(negativeSegments.reduce((s, x) => s + x.contribution, 0));
-  const totalAbs = totalPositive + totalNegative;
-
-  // Бюджет угла на каждую сторону: пропорционален общей сумме |вклад| по ВСЕМ
-  // группам сразу (totalAbs), но не может превысить физически доступные 135° —
-  // иначе дуга "перетекает" за границу -100/+100 и ломается геометрически.
-  // Если одна сторона доминирует (напр. позитив = 89% общего вклада), она
-  // получает полные 135° (как и раньше), а миноритарная сторона сжимается к
-  // своей истинной малой доле — вместо того чтобы искусственно занимать
-  // ровно половину дуги наравне с доминирующей стороной.
-  const negSideSpan =
-    totalAbs > 0 ? Math.min(ARC_HALF_SPAN, (totalNegative / totalAbs) * (ARC_HALF_SPAN * 2)) : 0;
-  const posSideSpan =
-    totalAbs > 0 ? Math.min(ARC_HALF_SPAN, (totalPositive / totalAbs) * (ARC_HALF_SPAN * 2)) : 0;
-
-  // ===== Левая сторона (-100..0) =====
-  const leftSegments: Array<{ start: number; end: number; color: string; label: string; labelEn?: string }> = [];
-  if (totalNegative > 0) {
-    let cursor = ARC_MID;
-    for (const seg of negativeSegments) {
-      const portion = Math.abs(seg.contribution) / totalNegative;
-      const angleSpan = portion * negSideSpan;
-      const end = cursor - angleSpan;
-      leftSegments.push({
-        start: Math.max(end, ARC_START),
-        end: cursor,
-        color: groupColor(seg.groupKey),
-        label: seg.label,
-        labelEn: seg.labelEn,
-      });
-      cursor = end;
-    }
-  }
-
-  // ===== Правая сторона (0..+100) =====
-  const rightSegments: Array<{ start: number; end: number; color: string; label: string; labelEn?: string }> = [];
-  if (totalPositive > 0) {
-    let cursor = ARC_MID;
-    for (const seg of positiveSegments) {
-      const portion = seg.contribution / totalPositive;
-      const angleSpan = portion * posSideSpan;
-      const end = cursor + angleSpan;
-      rightSegments.push({
-        start: cursor,
-        end: Math.min(end, ARC_END),
-        color: groupColor(seg.groupKey),
-        label: seg.label,
-        labelEn: seg.labelEn,
-      });
-      cursor = end;
-    }
-  }
+  // === РАСПРЕДЕЛЕНИЕ СЕГМЕНТОВ ПО ВСЕЙ ДУГЕ (-100..+100) ===
+  let cursor = ARC_START;
+  const arcSegments = sortedSegments.map((seg) => {
+    const portion = totalAbs > 0 ? Math.abs(seg.contribution) / totalAbs : 0;
+    const angleSpan = portion * ARC_SPAN;
+    const start = cursor;
+    const end = cursor + angleSpan;
+    cursor = end;
+    return {
+      start,
+      end: Math.min(end, ARC_END),
+      color: groupColor(seg.groupKey),
+      label: seg.label,
+      labelEn: seg.labelEn,
+      contribution: seg.contribution,
+      portion,
+    };
+  });
 
   const needleAngle = valueToAngle(animatedValue);
   const needleLen = R - STROKE - 10;
@@ -183,7 +150,7 @@ export function SpeedometerGauge({
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
           className="w-full"
           role="img"
-          aria-label={`Индекс мира: ${displayValue}%`}
+          aria-label={`Индекс мира: ${displayValue}`}
         >
           {/* Фоновая дуга */}
           <path
@@ -195,10 +162,10 @@ export function SpeedometerGauge({
             opacity={trackOpacity}
           />
 
-          {/* Левая сторона: отрицательные сегменты */}
-          {leftSegments.map((seg, i) => (
+          {/* Сегменты групп — вся дуга от -100 до +100, пропорционально вкладу */}
+          {arcSegments.map((seg, i) => (
             <motion.path
-              key={`left-${i}`}
+              key={`seg-${seg.label}-${i}`}
               d={arcPath(CX, CY, R, seg.start, seg.end)}
               fill="none"
               stroke={seg.color}
@@ -208,24 +175,11 @@ export function SpeedometerGauge({
               animate={{ pathLength: 1, opacity: 1 }}
               transition={{ duration: 0.6, delay: 0.1 + i * 0.08 }}
             >
-              <title>{lang === "en" && seg.labelEn ? seg.labelEn : seg.label}</title>
-            </motion.path>
-          ))}
-
-          {/* Правая сторона: положительные сегменты */}
-          {rightSegments.map((seg, i) => (
-            <motion.path
-              key={`right-${i}`}
-              d={arcPath(CX, CY, R, seg.start, seg.end)}
-              fill="none"
-              stroke={seg.color}
-              strokeWidth={STROKE}
-              strokeLinecap="butt"
-              initial={{ pathLength: 0, opacity: 0 }}
-              animate={{ pathLength: 1, opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.1 + i * 0.08 }}
-            >
-              <title>{lang === "en" && seg.labelEn ? seg.labelEn : seg.label}</title>
+              <title>
+                {lang === "en" && seg.labelEn ? seg.labelEn : seg.label}
+                {" — "}
+                {Math.round(seg.portion * 100)}%
+              </title>
             </motion.path>
           ))}
 
@@ -248,7 +202,7 @@ export function SpeedometerGauge({
             );
           })}
 
-          {/* Основные тики и метки */}
+          {/* Основные тики и метки (-100 … +100) */}
           {majorTicks.map((tick) => {
             const a = valueToAngle(tick);
             const p1 = polar(CX, CY, R + STROKE / 2 + 2, a);
@@ -297,7 +251,7 @@ export function SpeedometerGauge({
             <circle cx={CX} cy={CY} r={4} fill={dark ? "#1a1a2e" : "#fff"} />
           </motion.g>
 
-          {/* Центральная цифра */}
+          {/* Центральная цифра — сырой скор */}
           <text
             x={CX}
             y={CY + 55}
@@ -329,37 +283,36 @@ export function SpeedometerGauge({
 
       {/* Легенда вкладов групп */}
       <div className="mt-4 w-full max-w-[360px] space-y-1.5">
-        {segments
-          .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
-          .map((seg) => {
-            const color = groupColor(seg.groupKey);
-            const sign = seg.contribution > 0 ? "+" : "";
-            const share =
-              totalAbs > 0
-                ? Math.round((Math.abs(seg.contribution) / totalAbs) * 100)
-                : 0;
-            return (
-              <div key={seg.groupKey} className="flex items-center gap-2 text-xs">
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                  style={{ backgroundColor: color }}
-                />
-                <span className={cn("flex-1 leading-tight", dark ? "text-white/60" : "text-muted-foreground")}>
-                  {lang === "en" && seg.labelEn ? seg.labelEn : seg.label}
-                </span>
-                <span
-                  className="font-mono font-semibold tabular-nums"
-                  style={{ color }}
-                >
-                  {sign}{seg.contribution.toFixed(1)}
-                </span>
-                <span className={cn("w-10 text-right text-[10px]", dark ? "text-white/40" : "text-muted-foreground")}>
-                  {share}%
-                </span>
-              </div>
-            );
-          })}
+        {sortedSegments.map((seg) => {
+          const color = groupColor(seg.groupKey);
+          const sign = seg.contribution > 0 ? "+" : "";
+          const share =
+            totalAbs > 0
+              ? Math.round((Math.abs(seg.contribution) / totalAbs) * 100)
+              : 0;
+          return (
+            <div key={seg.groupKey} className="flex items-center gap-2 text-xs">
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                style={{ backgroundColor: color }}
+              />
+              <span className={cn("flex-1 leading-tight", dark ? "text-white/60" : "text-muted-foreground")}>
+                {lang === "en" && seg.labelEn ? seg.labelEn : seg.label}
+              </span>
+              <span
+                className="font-mono font-semibold tabular-nums"
+                style={{ color }}
+              >
+                {sign}{seg.contribution.toFixed(1)}
+              </span>
+              <span className={cn("w-10 text-right text-[10px]", dark ? "text-white/40" : "text-muted-foreground")}>
+                {share}%
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
+

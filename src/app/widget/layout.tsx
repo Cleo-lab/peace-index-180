@@ -2,6 +2,14 @@
 import type { Metadata } from "next";
 import { ReactNode } from "react";
 
+// Форсируем динамический рендеринг для всего сегмента /widget — без этого
+// generateMetadata() (и её fetch к /api/status) мог закэшироваться один раз
+// на моменте сборки и больше никогда не обновляться, из-за чего og:title
+// показывал устаревшее "0%" даже когда og:image (у него свой отдельный
+// force-dynamic в route.tsx) уже отдавал актуальное значение.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const UI_TEXT = {
   ru: {
     appTitle: "Индекс Мира 180",

@@ -27,16 +27,14 @@ export async function generateMetadata({
   const lang = typeof rawLang === "string" && rawLang === "en" ? "en" : "ru";
   const t = UI_TEXT[lang];
 
-  // Добавляем дату в URL, чтобы соцсети не кэшировали старую картинку
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const ogImageUrl = `https://peace-index-180.vercel.app/api/og?lang=${lang}&d=${today}`;
-  const title = `${t.appTitle} — ${t.appSubtitle}`;
 
   return {
-    title,
+    title: t.appTitle,
     description: t.description,
     openGraph: {
-      title,
+      title: t.appTitle,
       description: t.description,
       url: `https://peace-index-180.vercel.app/widget?lang=${lang}`,
       siteName: t.appTitle,
@@ -53,7 +51,7 @@ export async function generateMetadata({
     },
     twitter: {
       card: "summary_large_image",
-      title,
+      title: t.appTitle,
       description: t.description,
       images: [ogImageUrl],
     },

@@ -121,31 +121,17 @@ export async function GET(request: Request) {
   const nb1 = polar(CX, CY, 8, needleAngle + 90);
   const nb2 = polar(CX, CY, 8, needleAngle - 90);
 
-  const positiveSegments = segments.filter((s) => s.contribution > 0);
-  const negativeSegments = segments.filter((s) => s.contribution < 0);
-  const totalPositive = positiveSegments.reduce((s, x) => s + x.contribution, 0);
-  const totalNegative = Math.abs(negativeSegments.reduce((s, x) => s + x.contribution, 0));
-
-  const leftArcs: Array<{ start: number; end: number; color: string }> = [];
-  if (totalNegative > 0) {
-    let cursor = 360;
-    for (const seg of negativeSegments) {
-      const portion = Math.abs(seg.contribution) / totalNegative;
-      const angleSpan = portion * 135;
-      const end = cursor - angleSpan;
-      leftArcs.push({ start: Math.max(end, 225), end: cursor, color: seg.color });
-      cursor = end;
-    }
-  }
-
-  const rightArcs: Array<{ start: number; end: number; color: string }> = [];
-  if (totalPositive > 0) {
-    let cursor = 360;
-    for (const seg of positiveSegments) {
-      const portion = seg.contribution / totalPositive;
-      const angleSpan = portion * 135;
+  // Та же логика, что и в speedometer-gauge.tsx: единая дуга 225°→495° (270°),
+  // сегменты идут подряд по убыванию |вклада|, знак роли не играет — только порядок
+  // и доля от totalAbs. segments уже отсортированы выше по Math.abs(contribution).
+  const arcs: Array<{ start: number; end: number; color: string }> = [];
+  {
+    let cursor = 225;
+    for (const seg of segments) {
+      const portion = totalAbs > 0 ? Math.abs(seg.contribution) / totalAbs : 0;
+      const angleSpan = portion * 270;
       const end = cursor + angleSpan;
-      rightArcs.push({ start: cursor, end: Math.min(end, 495), color: seg.color });
+      arcs.push({ start: cursor, end: Math.min(end, 495), color: seg.color });
       cursor = end;
     }
   }
@@ -166,12 +152,8 @@ export async function GET(request: Request) {
             <svg width="520" height="300" viewBox="0 0 520 300">
               <path d={arcPath(CX, CY, R, 225, 495)} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={STROKE} />
 
-              {leftArcs.map((arc, i) => (
-                <path key={`L${i}`} d={arcPath(CX, CY, R, arc.start, arc.end)} fill="none" stroke={arc.color} strokeWidth={STROKE} strokeLinecap="butt" />
-              ))}
-
-              {rightArcs.map((arc, i) => (
-                <path key={`R${i}`} d={arcPath(CX, CY, R, arc.start, arc.end)} fill="none" stroke={arc.color} strokeWidth={STROKE} strokeLinecap="butt" />
+              {arcs.map((arc, i) => (
+                <path key={`arc-${i}`} d={arcPath(CX, CY, R, arc.start, arc.end)} fill="none" stroke={arc.color} strokeWidth={STROKE} strokeLinecap="butt" />
               ))}
 
               {MINOR_TICKS.map((t) => {
@@ -212,7 +194,7 @@ export async function GET(request: Request) {
                   <div style={{ width: 10, height: 10, borderRadius: 2, background: seg.color, flexShrink: 0 }} />
                   <span style={{ flex: 1, fontSize: 28, color: OG_COLORS.text_secondary }}>{label}</span>
                   <span style={{ fontSize: 28, fontWeight: 700, color: seg.color, fontFamily: "monospace", width: 48, textAlign: "right" }}>{sign}{seg.contribution.toFixed(1)}</span>
-                  <span style={{ width: 36, textAlign: "right", fontSize: 13, color: OG_COLORS.text_muted, fontFamily: "monospace" }}>{share}%</span>
+                  <span style={{ width: 36, marginLeft: 12, textAlign: "right", fontSize: 13, color: OG_COLORS.text_muted, fontFamily: "monospace" }}>{share}%</span>
                 </div>
               );
             })}

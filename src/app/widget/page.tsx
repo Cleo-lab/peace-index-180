@@ -97,14 +97,13 @@ function WidgetContent() {
       });
   }, []);
 
-  // ===== ШАРИНГ ССЫЛКИ (как у Бабеля) =====
   async function handleShare() {
     if (!data) return;
 
     const shareUrl = `https://peace-index-180.vercel.app/widget?lang=${lang}`;
     const label = probabilityLabelRu(data.totalProbability);
     const formatted = data.totalProbability > 0 ? `+${data.totalProbability}` : `${data.totalProbability}`;
-    const shareText = `${tx("appTitle")}: ${formatted}% — ${label}`;
+    const shareText = `${tx("appTitle")}: ${formatted} — ${label}`;
 
     setSharing(true);
     try {
@@ -141,7 +140,6 @@ function WidgetContent() {
 
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-black px-4">
-      {/* ===== ВИДЖЕТ (спидометр + дата + URL) ===== */}
       <div 
         className="w-full max-w-[300px] rounded-3xl overflow-visible"
         style={{ background: "linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 100%)" }}
@@ -153,7 +151,6 @@ function WidgetContent() {
             dark={true}
           />
 
-          {/* Дата под спидометром */}
           <div className="mt-4 text-center text-xs text-white/40">
             {new Date(data.calcDate).toLocaleDateString(
               lang === "ru" ? "ru-RU" : "en-US",
@@ -161,14 +158,12 @@ function WidgetContent() {
             )}
           </div>
 
-          {/* URL внизу */}
           <div className="mt-2 text-center text-[10px] text-white/20">
             peace-index-180.vercel.app
           </div>
         </div>
       </div>
 
-      {/* ===== КНОПКИ УПРАВЛЕНИЯ ===== */}
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
         <LanguageToggle variant="dark" />
 
@@ -189,7 +184,6 @@ function WidgetContent() {
         </button>
       </div>
 
-      {/* ===== МОДАЛЬНОЕ ОКНО С ОБОСНОВАНИЕМ ===== */}
       {showRationale && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -222,3 +216,4 @@ function WidgetContent() {
     </div>
   );
 }
+

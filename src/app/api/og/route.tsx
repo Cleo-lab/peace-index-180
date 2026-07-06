@@ -4,6 +4,7 @@ import { OG_COLORS, ogProbabilityColor, ogTierLabel, ogGroupColor, OG_GROUP_LABE
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const CX = 260;
 const CY = 180;
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const baseUrl = `${url.protocol}//${url.host}`;
-    
+
     const res = await fetch(`${baseUrl}/api/status`, { cache: "no-store" });
     if (res.ok) {
       const data = await res.json();
@@ -87,8 +88,8 @@ export async function GET(request: Request) {
         .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
         .map((r) => ({
           key: r.key,
-          label: OG_GROUP_LABELS[r.key]?.en ?? r.label,        // ← Используем OG_GROUP_LABELS
-          labelRu: OG_GROUP_LABELS[r.key]?.ru ?? r.labelRu,   // ← Используем OG_GROUP_LABELS
+          label: OG_GROUP_LABELS[r.key]?.en ?? r.label,
+          labelRu: OG_GROUP_LABELS[r.key]?.ru ?? r.labelRu,
           contribution: r.contribution,
           color: ogGroupColor(r.key),
         }));
@@ -121,9 +122,6 @@ export async function GET(request: Request) {
   const nb1 = polar(CX, CY, 8, needleAngle + 90);
   const nb2 = polar(CX, CY, 8, needleAngle - 90);
 
-  // Та же логика, что и в speedometer-gauge.tsx: единая дуга 225°→495° (270°),
-  // сегменты идут подряд по убыванию |вклада|, знак роли не играет — только порядок
-  // и доля от totalAbs. segments уже отсортированы выше по Math.abs(contribution).
   const arcs: Array<{ start: number; end: number; color: string }> = [];
   {
     let cursor = 225;
@@ -136,7 +134,7 @@ export async function GET(request: Request) {
     }
   }
 
-  return new ImageResponse(
+  const imageResponse = new ImageResponse(
     (
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: "#000000", color: OG_COLORS.text_primary, fontFamily: "system-ui, -apple-system, sans-serif", padding: 36 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
@@ -194,7 +192,7 @@ export async function GET(request: Request) {
                   <div style={{ width: 10, height: 10, borderRadius: 2, background: seg.color, flexShrink: 0 }} />
                   <span style={{ flex: 1, fontSize: 28, color: OG_COLORS.text_secondary }}>{label}</span>
                   <span style={{ fontSize: 28, fontWeight: 700, color: seg.color, fontFamily: "monospace", width: 48, textAlign: "right" }}>{sign}{seg.contribution.toFixed(1)}</span>
-                  <span style={{ width: 36, marginLeft: 12, textAlign: "right", fontSize: 13, color: OG_COLORS.text_muted, fontFamily: "monospace" }}>{share}%</span>
+                  <span style={{ width: 56, textAlign: "right", fontSize: 13, color: OG_COLORS.text_muted, fontFamily: "monospace" }}>{share}%</span>
                 </div>
               );
             })}
@@ -209,4 +207,12 @@ export async function GET(request: Request) {
     ),
     { width: 1200, height: 630 }
   );
+
+  // Добавляем заголовки для отключения кэширования
+  imageResponse.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  imageResponse.headers.set("Pragma", "no-cache");
+  imageResponse.headers.set("Expires", "0");
+
+  return imageResponse;
 }
+

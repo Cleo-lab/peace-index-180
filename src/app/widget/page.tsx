@@ -103,7 +103,7 @@ function WidgetContent() {
     const shareUrl = `https://peace-index-180.vercel.app/widget?lang=${lang}`;
     const label = probabilityLabelRu(data.totalProbability);
     const formatted = data.totalProbability > 0 ? `+${data.totalProbability}` : `${data.totalProbability}`;
-    const shareText = `${tx("appTitle")}: ${formatted} — ${label}`;
+    const shareText = tx("appTitle");
 
     setSharing(true);
     try {

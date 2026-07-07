@@ -475,6 +475,8 @@ Write an executive summary (3-4 sentences, in English) explaining WHY the index 
 1. In 1-2 sentences, name the 2-3 most statistically influential drivers (highest weight × score contribution). Use concrete examples from the markers' rationales.
 2. Then, separately, scan ALL markers' rationales above — regardless of their weight — for any mention of a large-scale, high-casualty single event within the last few days (e.g. a mass-casualty missile/drone strike on a city, a major escalation incident with significant reported deaths or injuries). If such an event is mentioned anywhere, add one factual, neutral sentence acknowledging it, even if that marker's weight is too low to be a statistical driver — this keeps the summary reflecting real-world events the reader would expect to see, not only the weighted math. If no such standout event appears in any marker's rationale, omit this sentence entirely — do not invent one.
 
+DATE DISCIPLINE (anti-hallucination): Do not state a specific calendar date (e.g. "on July 5") unless that exact date appears verbatim in the marker rationales above. Marker rationales frequently describe events without stating an exact date ("a recent strike", "the latest wave of attacks") — in that case, use the same non-specific phrasing yourself. Never infer, average, or guess a plausible-sounding date; an approximate but invented date is worse than no date at all.
+
 INTERPRETATION GUIDE:
 • +80 to +100: "Durable peace is becoming highly probable"
 • +40 to +79: "Peace tendency is strengthening"
@@ -743,6 +745,13 @@ ${payloadItems}
     console.error("[analyzer] Failed to translate aggregate summary:", err);
   }
 
+  // ===== Этап 5: уведомление в Telegram-канал =====
+  // Не критично для основного пайплайна: любая ошибка здесь (нет токена, канал
+  // недоступен, Telegram лежит) логируется и молча игнорируется — пересчёт уже
+  // полностью завершён и сохранён к этому моменту, отправка уведомления не должна
+  // ронять скрипт или помечать прогон как неудавшийся.
+  await notifyTelegram(aggregate.totalProbability, calcDate);
+
   onProgress?.({
     phase: "done",
     current: "Complete",
@@ -751,6 +760,51 @@ ${payloadItems}
   });
 
   return aggregate;
+}
+
+/// Отправляет фото с OG-картинкой индекса в Telegram-канал через Bot API.
+/// Использует уже существующий /api/og — Telegram сам скачивает картинку по URL,
+/// генерировать/хранить файл дополнительно не нужно.
+async function notifyTelegram(total: number, calcDate: Date): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const channel = process.env.TELEGRAM_CHANNEL; // например "@peace_index_180"
+
+  if (!token || !channel) {
+    console.warn(
+      "[telegram] TELEGRAM_BOT_TOKEN/TELEGRAM_CHANNEL не заданы — уведомление пропущено.",
+    );
+    return;
+  }
+
+  try {
+    const formatted = total > 0 ? `+${total}` : `${total}`;
+    const dateStr = calcDate.toISOString().slice(0, 10);
+    // cache-buster (?t=...), чтобы Telegram не показал старую закэшированную
+    // версию картинки по тому же URL — та же проблема, что была с og:image ранее.
+    const photoUrl = `https://peace-index-180.vercel.app/api/og?lang=ru&t=${Date.now()}`;
+    const caption = `Индекс Мира 180: ${formatted}\n${dateStr}\n\nhttps://peace-index-180.vercel.app`;
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: channel,
+        photo: photoUrl,
+        caption,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error(`[telegram] sendPhoto failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+      return;
+    }
+
+    console.log("[telegram] notification sent successfully");
+  } catch (err) {
+    console.error("[telegram] notify failed (non-fatal, ignored):", err);
+  }
 }
 export async function translateToRussian(text: string): Promise<string> {
   // ВАЖНО: llmCompleteText вместо llmComplete.

@@ -13,6 +13,10 @@ import {
 
 const HORIZON_DAYS = 180;
 const STALE_THRESHOLD_DAYS = 14;
+/// Порог "резкого скачка" индекса день-к-дню (в пунктах шкалы -100..+100).
+/// Если |сегодня - вчера| >= порога, агрегатор обязан явно назвать это скачком
+/// и указать конкретную причину из рационале маркеров — а не просто упомянуть число.
+const SIGNIFICANT_SWING_THRESHOLD = 10;
 
 function buildSystemInstruction(currentDateStr: string): string {
   return `You are an analytical engine estimating the Peace & Escalation Index for Ukraine within the next ${HORIZON_DAYS} days.
@@ -463,9 +467,35 @@ export async function calculateAggregate(
     ? `NOTE: ${stubCount} of ${scores.length} markers returned low-confidence estimates due to lack of recent news data. The index may be less reliable than usual. `
     : "";
 
+  // === Подтягиваем предыдущую (вчерашнюю) агрегированную оценку ===
+  // Нужна модели, чтобы "помнить" контекст: явно назвать резкий скачок индекса
+  // день-к-дню и связать его с конкретным событием, а не молчать о разрыве.
+  let prevContext = "PREVIOUS_ASSESSMENT: No previous calculation on record (this may be the first run).";
+  let swingInstruction = "";
+  try {
+    const prevAggregate = await db.aggregate.findFirst({
+      where: { calcDate: { lt: startOfTodayUTC() } },
+      orderBy: { calcDate: "desc" },
+    });
+    if (prevAggregate) {
+      const prevDateStr = fmtDateISO(prevAggregate.calcDate);
+      const prevFormatted =
+        prevAggregate.totalProbability > 0 ? `+${prevAggregate.totalProbability}` : `${prevAggregate.totalProbability}`;
+      const diff = total - prevAggregate.totalProbability;
+      prevContext = `PREVIOUS_ASSESSMENT: On ${prevDateStr} (the previous calculation), the index stood at ${prevFormatted}. Day-over-day change: ${diff > 0 ? "+" : ""}${diff} points.`;
+      if (Math.abs(diff) >= SIGNIFICANT_SWING_THRESHOLD) {
+        swingInstruction = `\n3. NOTABLE SHIFT DETECTED: the index moved ${diff > 0 ? "+" : ""}${diff} points since the previous calculation (${prevFormatted} → ${total > 0 ? "+" + total : total}), which meets or exceeds the ${SIGNIFICANT_SWING_THRESHOLD}-point threshold for a "sharp swing". You MUST add one sentence explicitly naming this as a sharp day-over-day shift and identifying the SPECIFIC event from the markers' rationales above that most plausibly explains it (e.g. a particular strike with reported casualties, a major financial/legal announcement, a diplomatic escalation). Ground this explanation strictly in facts stated in the marker rationales — do not speculate beyond what is written there, and do not invent a specific calendar date beyond what DATE DISCIPLINE below allows.`;
+      }
+    }
+  } catch (err) {
+    console.error("[analyzer] failed to load previous aggregate for swing context:", err);
+  }
+
   const aggPrompt = `You are the Aggregator for the Peace Index 180. Today is ${todayStr}. The final score stands deterministically at ${total} (on a scale from -100 max escalation to +100 durable peace, where 0 is deadlock).
 
 ${coverageWarning}Data coverage: ${coveragePercent} of markers have sufficient news-based confidence.
+
+${prevContext}
 
 markers = [
 ${markersBrief}
@@ -473,9 +503,9 @@ ${markersBrief}
 
 Write an executive summary (3-4 sentences, in English) explaining WHY the index stands at ${total}:
 1. In 1-2 sentences, name the 2-3 most statistically influential drivers (highest weight × score contribution). Use concrete examples from the markers' rationales.
-2. Then, separately, scan ALL markers' rationales above — regardless of their weight — for any mention of a large-scale, high-casualty single event within the last few days (e.g. a mass-casualty missile/drone strike on a city, a major escalation incident with significant reported deaths or injuries). If such an event is mentioned anywhere, add one factual, neutral sentence acknowledging it, even if that marker's weight is too low to be a statistical driver — this keeps the summary reflecting real-world events the reader would expect to see, not only the weighted math. If no such standout event appears in any marker's rationale, omit this sentence entirely — do not invent one.
+2. Then, separately, scan ALL markers' rationales above — regardless of their weight — for any mention of a large-scale, high-casualty single event within the last few days (e.g. a mass-casualty missile/drone strike on a city, a major escalation incident with significant reported deaths or injuries). If such an event is mentioned anywhere, add one factual, neutral sentence acknowledging it, even if that marker's weight is too low to be a statistical driver — this keeps the summary reflecting real-world events the reader would expect to see, not only the weighted math. If no such standout event appears in any marker's rationale, omit this sentence entirely — do not invent one.${swingInstruction}
 
-DATE DISCIPLINE (anti-hallucination): Do not state a specific calendar date (e.g. "on July 5") unless that exact date appears verbatim in the marker rationales above. Marker rationales frequently describe events without stating an exact date ("a recent strike", "the latest wave of attacks") — in that case, use the same non-specific phrasing yourself. Never infer, average, or guess a plausible-sounding date; an approximate but invented date is worse than no date at all.
+DATE DISCIPLINE (anti-hallucination): Do not state a specific calendar date (e.g. "on July 5") unless that exact date appears verbatim in the marker rationales above. Marker rationales frequently describe events without stating an exact date ("a recent strike", "the latest wave of attacks") — in that case, use the same non-specific phrasing yourself. Never infer, average, or guess a plausible-sounding date; an approximate but invented date is worse than no date at all. The PREVIOUS_ASSESSMENT date above is a known, trusted fact (not model-generated) and MAY be cited if you reference the previous score.
 
 INTERPRETATION GUIDE:
 • +80 to +100: "Durable peace is becoming highly probable"

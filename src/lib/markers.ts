@@ -170,7 +170,7 @@ export const MARKERS: MarkerDef[] = [
     group: "law",
     weight: 9,
     searchQuery: `EUR-Lex European Union regulation Ukraine accession assistance fund reconstruction ${years}`,
-    logic: "EU legal acts on Ukraine accession, assistance funds, reconstruction = positive (+30 to +60). Suspension or freezing of accession talks = negative (-30 to -50).",
+    logic: "EU legal acts on Ukraine's EU accession progress and CIVILIAN reconstruction/economic assistance funds = positive (+30 to +60), as these signal expectation of a stable post-war future. Suspension or freezing of accession talks = negative (-30 to -50). If the 'assistance fund' or legislative act is explicitly earmarked for weapons procurement, military equipment, or long-range strike capability, score this NEGATIVE (-20 to -50, scaled to the size of the committed sum) rather than positive or neutral: committing large sums specifically to acquire more weapons during an active war is itself evidence that near-term peace is NOT expected by the parties involved — the money is meant to sustain and intensify fighting capacity, not to wind it down. The larger the committed sum, the stronger this negative signal should be (a landmark package on the scale of tens of billions signals a multi-year war-fighting commitment, not a stopgap). This is consistent with, and reinforces, the Kiel Ukraine Support Tracker marker (M4). Read carefully what the money is actually earmarked for, not just the presence of a large headline number or the word 'assistance'.",
     sources: ["eur-lex.europa.eu"],
   },
   {
@@ -287,6 +287,24 @@ export const MARKERS: MarkerDef[] = [
     logic: "Sustained drop in visually confirmed losses = positive (+10 to +25). Sharp spike = negative (-20 to -40).",
     sources: ["github.com/leedrake5/russia-ukraine"],
   },
+  {
+    id: "UKR_MOBILIZATION",
+    code: "M26",
+    name: "Ukrainian Mobilization Intensity",
+    nameRu: "Интенсивность бусификации в Украине",
+    group: "ukraine_military",
+    weight: 5,
+    // ПРИМЕЧАНИЕ: единственный маркер в проекте с русско/украиноязычным поисковым
+    // запросом. Западные англоязычные СМИ (Reuters/AP/Google News EN) эту тему
+    // практически не освещают либо пересказывают только официальные заявления;
+    // реальное освещение — в украиноязычных СМИ и Telegram-каналах (см. fetchNews
+    // в rss.ts — для этого markerId дополнительно подключены Telegram-источники
+    // через RSSHub, не только Tavily/Google News).
+    searchQuery: `ТЦК мобилизация избиение скандал бусификация принудительная мобилизация нарушение процедуры`,
+    logic: "This marker tracks the FREQUENCY and SEVERITY of reported forced-conscription scandal incidents in Ukraine (violent street detentions, procedural violations, beatings, use of pepper spray on bystanders, conscription of legally-exempt individuals — disabled persons, sole caregivers of minors, etc.), sourced primarily from Ukrainian-language media and Telegram-channel reporting, NOT from official government statements. Rising or sustained frequency/severity of such reports = negative (-20 to -40), scaled to how severe and how frequent the reported incidents are: this is a leading indicator that authorities need, and expect to keep needing, continued manpower inflow — i.e. no near-term peace is expected, REGARDLESS of whether the mobilization methods themselves are legal or justified (that legal/moral judgment is explicitly out of scope for this neutral index). A genuine, OBSERVED easing — an actual drop in the frequency of reported incidents over time — is a positive signal (+15 to +35). Do not score official reassurances, announced 'procedure reviews', or ombudsman statements as positive on their own — treat them only as a partial, likely-undercounted data point, not evidence of real change; score based on the trend in actual reported incidents.",
+    sources: ["Telegram: @kindzadza_ua", "Telegram: @stranaua", "Ukrainian media (TSN, Babel, RBC Ukraine, Suspilne)"],
+  },
+
 
   // ===== Группа 5: Маркеры Российской стороны (Средний вес) =====
   {

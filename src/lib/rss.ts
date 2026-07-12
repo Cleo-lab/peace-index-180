@@ -309,21 +309,29 @@ function decodeEntities(text: string): string {
     .replace(/&nbsp;/g, " ");
 }
 
-/// Универсальная функция сбора: Tavily (основной) → Google News RSS (резерв) → NewsAPI (последний резерв)
+/// Универсальная функция сбора: Tavily (основной) → Google News RSS (резерв) → NewsAPI (последний резерв),
+/// ПЛЮС Telegram-каналы (rsshub.app), если они сконфигурированы для конкретного markerId —
+/// см. MARKER_TELEGRAM_CHANNELS ниже. Telegram-источники домешиваются ВСЕГДА, а не только
+/// когда остальные источники дали мало данных: для некоторых тем (например, бусификация)
+/// именно Telegram — основное место освещения, а не запасной вариант на крайний случай.
 export async function fetchNews(
   query: string,
   maxItems = 12,
   daysWindow = 30,
+  markerId?: string,
 ): Promise<NewsItem[]> {
+  let result: NewsItem[] = [];
+
   // 1. Основной источник — Tavily (свежее, с собственной релевантностью)
   if (process.env.TAVILY_API_KEY) {
     try {
       const tavilyItems = await fetchTavilyNews(query, maxItems, daysWindow);
       if (tavilyItems.length >= Math.min(3, maxItems)) {
         console.log(`[tavily] OK — ${tavilyItems.length} items for "${query}"`);
-        return tavilyItems;
+        result = tavilyItems;
+      } else {
+        console.log(`[tavily] returned only ${tavilyItems.length} items for "${query}", falling back to RSS...`);
       }
-      console.log(`[tavily] returned only ${tavilyItems.length} items for "${query}", falling back to RSS...`);
     } catch (err) {
       console.error(`[tavily] unexpected error for "${query}":`, err);
     }
@@ -331,28 +339,194 @@ export async function fetchNews(
     console.warn(`[tavily] TAVILY_API_KEY is not set — skipping Tavily, using Google News RSS only.`);
   }
 
-  // 2. Резерв — Google News RSS (прежняя логика, без изменений)
-  const rssItems = await fetchGoogleNewsRSS(query, maxItems);
+  if (result.length === 0) {
+    // 2. Резерв — Google News RSS (прежняя логика, без изменений)
+    const rssItems = await fetchGoogleNewsRSS(query, maxItems);
 
-  if (rssItems.length >= maxItems * 0.5) {
-    // Достаточно данных от RSS
-    return rssItems;
+    if (rssItems.length >= maxItems * 0.5) {
+      // Достаточно данных от RSS
+      result = rssItems;
+    } else {
+      // 3. Последний резерв — NewsAPI если мало данных
+      console.log(`[rss] Google News returned ${rssItems.length} items for "${query}", trying fallback...`);
+      const fallbackItems = await fetchNewsAPIFallback(query, maxItems);
+
+      // Дедупликация по URL
+      const seen = new Set(rssItems.map((i) => i.url));
+      const uniqueFallback = fallbackItems.filter((i) => !seen.has(i.url));
+
+      // Объединяем и сортируем по дате
+      const combined = [...rssItems, ...uniqueFallback];
+      combined.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+      result = combined.slice(0, maxItems);
+    }
   }
-  
-  // 3. Последний резерв — NewsAPI если мало данных
-  console.log(`[rss] Google News returned ${rssItems.length} items for "${query}", trying fallback...`);
-  const fallbackItems = await fetchNewsAPIFallback(query, maxItems);
-  
-  // Дедупликация по URL
-  const seen = new Set(rssItems.map((i) => i.url));
-  const uniqueFallback = fallbackItems.filter((i) => !seen.has(i.url));
-  
-  // Объединяем и сортируем по дате
-  const combined = [...rssItems, ...uniqueFallback];
-  combined.sort((a, b) => b.date.getTime() - a.date.getTime());
-  
-  return combined.slice(0, maxItems);
+
+  // 4. Telegram-каналы (полноценный источник, если сконфигурирован для этого маркера)
+  if (markerId && MARKER_TELEGRAM_CHANNELS[markerId]?.length) {
+    try {
+      const telegramItems = await fetchTelegramChannels(markerId, maxItems);
+      if (telegramItems.length > 0) {
+        const seenUrls = new Set(result.map((i) => i.url));
+        const uniqueTelegram = telegramItems.filter((i) => !seenUrls.has(i.url));
+        result = [...result, ...uniqueTelegram];
+        result.sort((a, b) => b.date.getTime() - a.date.getTime());
+        result = result.slice(0, maxItems);
+        console.log(`[telegram] ${markerId}: added ${uniqueTelegram.length} items, total now ${result.length}`);
+      }
+    } catch (err) {
+      console.error(`[telegram] fetch failed for marker ${markerId}:`, err);
+    }
+  }
+
+  return result;
 }
+
+/// Telegram-каналы, сконфигурированные как ПОЛНОЦЕННЫЙ источник (не запасной) для
+/// конкретных маркеров — используется, когда тема слабо освещается англоязычными
+/// источниками (Tavily/Google News), но активно обсуждается в украиноязычном Telegram.
+///
+/// ВАЖНО: изначально это шло через rsshub.app как прокси, но публичный демо-инстанс
+/// RSSHub оказался ненадёжен (403 на оба канала — вероятно, троттлинг по IP на
+/// бесплатном демо). Вместо стороннего прокси читаем НАПРЯМУЮ публичную
+/// preview-страницу канала https://t.me/s/<username> — это официальная страница
+/// Telegram для встраивания виджетов канала на сторонние сайты, открыта без логина
+/// и без токенов. RSSHub под капотом делает ровно то же самое — просто нам не нужен
+/// посредник, который сам может быть недоступен.
+const MARKER_TELEGRAM_CHANNELS: Record<string, string[]> = {
+  UKR_MOBILIZATION: ["kindzadza_ua", "stranaua"],
+};
+
+/// Скрапит один Telegram-канал через публичную preview-страницу (без токенов/API).
+/// Формат страницы стабилен (используется многими встраиваемыми виджетами), но это
+/// НЕ официальный API — если Telegram когда-нибудь поменяет вёрстку, парсинг вернёт
+/// 0 сообщений (не упадёт с ошибкой) и это будет видно в логах по нулевым цифрам.
+async function fetchTelegramChannelPreview(
+  channelUsername: string,
+  maxItems: number,
+): Promise<NewsItem[]> {
+  const url = `https://t.me/s/${channelUsername}`;
+
+  let html: string;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) {
+      console.warn(`[telegram] HTTP ${res.status} for ${url}`);
+      return [];
+    }
+    html = await res.text();
+  } catch (err) {
+    console.warn(`[telegram] fetch failed for ${url}:`, err);
+    return [];
+  }
+
+  const items: NewsItem[] = [];
+  // Каждое сообщение в разметке начинается с data-post="channel/12345" —
+  // разбиваем HTML по этим границам, чтобы получить один "блок" на сообщение.
+  const blocks = html.split(/(?=data-post="[^"]+")/);
+
+  for (const block of blocks) {
+    const postMatch = block.match(/data-post="([^"]+)"/);
+    if (!postMatch) continue;
+    const postId = postMatch[1]; // например "kindzadza_ua/4821"
+
+    const dateMatch = block.match(/<time[^>]*datetime="([^"]+)"/);
+    const date = dateMatch ? new Date(dateMatch[1]) : new Date();
+
+    const textMatch = block.match(
+      /class="tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/,
+    );
+    if (!textMatch) continue; // сообщение без текста (просто фото/видео без подписи)
+
+    let text = textMatch[1]
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]+>/g, "")
+      .trim();
+    text = decodeEntities(text);
+    if (!text) continue;
+
+    items.push({
+      title: text.slice(0, 160),
+      url: `https://t.me/${postId}`,
+      date: isNaN(date.getTime()) ? new Date() : date,
+      source: `Telegram: @${channelUsername}`,
+      snippet: text,
+      relevance: 0.6, // канал целиком по теме — базовая релевантность чуть выше обычной
+    });
+
+    if (items.length >= maxItems) break;
+  }
+
+  return items;
+}
+
+/// Ключевые слова для фильтрации Telegram-постов по теме конкретного маркера.
+/// Каналы в MARKER_TELEGRAM_CHANNELS — общие военно-политические, а не узко
+/// специализированные "только про бусификацию", поэтому большинство их постов
+/// не по теме и должны отсеиваться, иначе они разбавляют сигнал и могут вытеснить
+/// релевантные результаты Tavily при сортировке по дате.
+const TELEGRAM_TOPIC_KEYWORDS: Record<string, string[]> = {
+  UKR_MOBILIZATION: [
+    "тцк", "мобилизац", "мобіліза", "повестк", "повістк",
+    "військкомат", "военкомат", "воєнкомат", "бусиф", "бзвп",
+    "уклонист", "ухилянт", "рекрут", "затрим", "полюванн",
+    "облав", "штурмов", "одноразк", "мобилизован", "мобілізован",
+  ],
+};
+
+function matchesTopicKeywords(text: string, keywords: string[]): boolean {
+  const lower = text.toLowerCase();
+  return keywords.some((kw) => lower.includes(kw));
+}
+
+/// Собирает новости из Telegram-каналов, сконфигурированных для данного маркера.
+export async function fetchTelegramChannels(
+  markerId: string,
+  maxItems = 12,
+): Promise<NewsItem[]> {
+  const channels = MARKER_TELEGRAM_CHANNELS[markerId] || [];
+  if (channels.length === 0) return [];
+
+  const keywords = TELEGRAM_TOPIC_KEYWORDS[markerId];
+
+  const all: NewsItem[] = [];
+  for (const channel of channels) {
+    try {
+      // Берём с запасом (в разы больше maxItems) — канал общий, после фильтрации
+      // по теме релевантным окажется лишь часть постов, иначе рискуем остаться
+      // почти без данных для узкой темы на фоне общего потока новостей канала.
+      const rawItems = await fetchTelegramChannelPreview(channel, maxItems * 4);
+      const filtered = keywords
+        ? rawItems.filter((item) => matchesTopicKeywords(item.snippet, keywords))
+        : rawItems;
+      console.log(
+        `[telegram] ${markerId}: @${channel} → ${rawItems.length} постов всего, ${filtered.length} по теме`,
+      );
+      all.push(...filtered);
+    } catch (e) {
+      console.warn(`[telegram] ${markerId}: ошибка @${channel} —`, e);
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+
+  // Дедупликация по URL + сортировка по дате (свежие сверху)
+  const seen = new Set<string>();
+  const unique = all.filter((item) => {
+    if (seen.has(item.url)) return false;
+    seen.add(item.url);
+    return true;
+  });
+  unique.sort((a, b) => b.date.getTime() - a.date.getTime());
+  return unique.slice(0, maxItems);
+}
+
 /// Fallback-источники для конкретных маркеров (RSS-ленты)
 const MARKER_FALLBACK_RSS: Record<string, string[]> = {
   RADA_FDI: [

@@ -16,7 +16,7 @@ const STALE_THRESHOLD_DAYS = 14;
 /// Порог "резкого скачка" индекса день-к-дню (в пунктах шкалы -100..+100).
 /// Если |сегодня - вчера| >= порога, агрегатор обязан явно назвать это скачком
 /// и указать конкретную причину из рационале маркеров — а не просто упомянуть число.
-const SIGNIFICANT_SWING_THRESHOLD = 10;
+const SIGNIFICANT_SWING_THRESHOLD = 15;
 
 function buildSystemInstruction(currentDateStr: string): string {
   return `You are an analytical engine estimating the Peace & Escalation Index for Ukraine within the next ${HORIZON_DAYS} days.
@@ -199,7 +199,7 @@ export async function analyzeMarker(marker: MarkerDef): Promise<MarkerAnalysis> 
   const RECENCY_SENSITIVE_GROUPS = new Set(["escalation", "ukraine_military", "russia"]);
   const daysWindow = RECENCY_SENSITIVE_GROUPS.has(marker.group) ? 7 : 30;
 
-  let news = await fetchNews(marker.searchQuery, 18, daysWindow);
+  let news = await fetchNews(marker.searchQuery, 18, daysWindow, marker.id);
 
 // Fallback: если Google News пуст, берём из БД за последние 7 дней
 if (news.length === 0) {

@@ -136,7 +136,7 @@ export default function Home() {
   const groups = status?.groups ?? [];
   const calcDate = status?.calcDate ?? null;
   const job = status?.job ?? null;
-  const totalMarkers = status?.totalMarkers ?? 24;
+  const totalMarkers = status?.totalMarkers ?? 26;
 
   // Группировка маркеров + вычисление вкладов
   const { groupRows, segments } = React.useMemo(() => {
@@ -441,4 +441,3 @@ function EmptyState({
     </Card>
   );
 }
-

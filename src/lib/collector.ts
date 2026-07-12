@@ -25,7 +25,7 @@ function parseDate(raw?: string): Date | null {
 export async function collectMarker(marker: MarkerDef): Promise<CollectedEvent[]> {
   let items: NewsItem[] = [];
   try {
-    items = await fetchNews(marker.searchQuery, 12);
+    items = await fetchNews(marker.searchQuery, 12, 30, marker.id);
   } catch (err) {
     console.error(`[collector] search failed for ${marker.id}:`, err);
     return [];

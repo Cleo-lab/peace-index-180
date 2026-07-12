@@ -308,7 +308,7 @@ export const MARKERS: MarkerDef[] = [
     group: "russia",
     weight: 5,
     searchQuery: `Russia drone strike refinery oil facility economy sanctions budget deficit ${years} impact`,
-    logic: "Strikes on Russian refineries and budget stress increase Moscow's incentive to negotiate = positive (+20 to +40). Russian economy resilience or war economy expansion = negative (-10 to -20).",
+    logic: "Strikes on Russian rear infrastructure (refineries, energy facilities, logistics) and resulting budget/economic stress are, in themselves, acts of war and an expansion of strikes deeper into Russian territory — score these as escalatory (-20 to -50, scaled to severity/frequency of the strikes), not as progress toward peace. Do NOT award a positive score based on the speculative theory that economic damage will eventually pressure Moscow into negotiating — that causal chain is unverified and contested, and treating it as a peace signal would be an inconsistent, directionally biased application of this index's neutrality principle (the same category of strike, aimed at Ukraine's energy infrastructure, is scored as escalation elsewhere in this index — see Critical Energy Infrastructure marker — so it must be scored the same way here). A positive score for THIS marker is justified only when the source explicitly reports a resulting shift toward negotiation stated by Russian officials, or a verified contraction of military/budget capacity that directly limits continued offensive operations — not the strikes or the economic pressure itself.",
     sources: ["Reuters", "AP"],
   },
   {
@@ -332,7 +332,7 @@ export const MARKERS: MarkerDef[] = [
     group: "politics",
     weight: 3,
     searchQuery: `G7 White House statement Ukraine peace summit strategy support ${years} plan`,
-    logic: "Concrete peace plans or summit proposals = positive (+15 to +30). Vague statements = minimal impact (+5 to +10).",
+    logic: "Concrete peace plans or summit proposals = positive (+15 to +30). Vague statements = minimal impact (+5 to +10). Announcements of new weapons packages, military aid, or funding for arms procurement are NOT peace signals, even when the source frames them positively as 'support' — do not score these positively under this marker. Such news reflects continuation or intensification of the war effort, which this index already scores as escalatory elsewhere (see Kiel Ukraine Support Tracker marker) — it should not additionally be counted as a diplomatic positive here.",
     sources: ["whitehouse.gov", "Reuters", "AP"],
   },
   {
